@@ -8,6 +8,7 @@ import { Executor } from "./execution/executor";
 import { Journal } from "./execution/journal";
 import { lockDataDir } from "./execution/lock";
 import { RecipientDirectory } from "./plan/directory";
+import { createDepegGuard } from "./depeg/guard";
 import { draftPlan } from "./plan/planner";
 
 const config = loadConfig();
@@ -31,6 +32,7 @@ const app = createApp({
   // Only this machine can connect, so only its own names are valid in the Host header.
   allowedHosts: local ? localHostHeaders(config) : undefined,
   demoAttack: config.AGENT_DEMO_ATTACK === "1",
+  depeg: createDepegGuard({ apiKey: config.COURNOT_API_KEY }),
 });
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (info) => {

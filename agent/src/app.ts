@@ -6,6 +6,7 @@ import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from
 import { z } from "zod";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
 import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
+import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegGuard } from "./depeg/guard";
 import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
 import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
@@ -29,6 +30,8 @@ export interface AppDeps {
    * this machine only, so a web page can't reach it through a DNS name that points here.
    */
   allowedHosts?: string[];
+  /** The depeg guard (Cournot). Without it, plans keep the coins they were planned with. */
+  depeg?: DepegGuard;
   /** Turns on POST /plans/:id/demo-attack (AGENT_DEMO_ATTACK=1). Off by default: the route answers 404. */
   demoAttack?: boolean;
   now?: () => Date;
@@ -61,9 +64,29 @@ function input<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
   return result.data;
 }
 
+/**
+ * Asks the depeg guard which stablecoin to pay in, before the vault's checks run, and records
+ * the decision on the plan. Its note becomes part of the text the owner signs.
+ */
+async function applyDepegGuard(guard: DepegGuard, plan: Plan, threshold: number): Promise<void> {
+  const decision = await guard.decide(threshold);
+  plan.depeg = decision;
+  if (!decision.available) {
+    plan.notes.push(`Depeg guard: ${decision.reason} The plan keeps its coins; the vault's price floor still applies.`);
+    return;
+  }
+  for (const payment of plan.payments) if (isExecutable(payment)) payment.token = decision.chosenToken;
+  const side = decision.chosenToken === "USDT" ? "above" : "within";
+  plan.notes.push(
+    `Depeg guard: Cournot puts USDC's depeg risk at ${percent(decision.probability)}, ${side} your ${decision.threshold}% limit, so every payment is in ${decision.chosenToken}.`,
+  );
+}
+
 const CreatePlanBody = z.object({
   owner: AddressSchema,
   message: z.string().trim().min(1).max(2000),
+  /** The owner's depeg limit in percent: above it, the guard pays in USDT instead of USDC. */
+  depegThreshold: z.number().min(0).max(100).optional(),
 });
 
 const DirectoryBody = RecipientEntrySchema.extend({ owner: AddressSchema });
@@ -196,6 +219,9 @@ export function createApp(deps: AppDeps) {
         : undefined,
     });
     const plan = buildPlan(draft, { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at });
+    if (deps.depeg && plan.kind === "payment" && plan.payments.some(isExecutable)) {
+      await applyDepegGuard(deps.depeg, plan, body.depegThreshold ?? DEFAULT_THRESHOLD_PERCENT);
+    }
     if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });

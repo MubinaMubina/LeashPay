@@ -1,3 +1,4 @@
+import type { DepegDecision } from "../depeg/guard";
 import { formatUnits, getAddress, isAddress, keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
 import type { VaultRevert } from "../chain/errors";
 import type { VaultSnapshot } from "../chain/gateway";
@@ -29,6 +30,8 @@ export interface Plan {
   payments: PlannedPayment[];
   notes: string[];
   createdAt: string;
+  /** The depeg guard's decision (Cournot's USDC depeg risk against the owner's limit), when it ran. */
+  depeg?: DepegDecision;
 }
 
 export type ExecutablePayment = PlannedPayment & { recipient: Address; amount: bigint };

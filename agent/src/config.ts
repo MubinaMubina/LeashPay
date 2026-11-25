@@ -28,6 +28,8 @@ const EnvSchema = z.object({
   LLM_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
   AGENT_API_TOKEN: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
+  /** Cournot's prepaid key, for when the free quota is used up. The guard works without it while free calls last. */
+  COURNOT_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   /** "1" turns on POST /plans/:id/demo-attack for the live demo. Off unless set. */
   AGENT_DEMO_ATTACK: z.preprocess(emptyToUndefined, z.enum(["0", "1"]).default("0")),
   DATA_DIR: z.string().default(path.resolve(here, "../data")),
