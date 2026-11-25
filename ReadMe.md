@@ -18,7 +18,7 @@ LeashPay keeps the money in a smart contract, the **vault**. The AI agent can on
 2. The owner adds recipients: name, address, country, local currency, monthly cap. Only the address and the cap go on-chain; names and preferences stay in the agent's memory.
 3. The owner types: *"Pay Linh 300 and Marco 450 on the 1st."* The agent recalls each person's preferences and shows the amounts in Vietnamese dong and Philippine pesos, using CoinMarketCap.
 4. **Depeg guard:** the agent asks Cournot how likely a USDC or USDT depeg is and shows the claim, the probability and the sources. Above the owner's threshold, it pays in the other stablecoin.
-5. The agent calls the vault. The vault checks the allowlist, the caps, the cooldown, the allowed coins and the Atlas on-chain price, then pays or refuses with a clear reason.
+5. The owner approves the plan with one wallet signature; without it the agent sends nothing. The agent then calls the vault, which checks the allowlist, the caps, the cooldown, the allowed coins and the Atlas on-chain price, and pays or refuses with a clear reason.
 6. Between payouts, idle funds sit in a tokenized T-bill (a mock real-world-asset token whose value grows) and are pulled back before the next payout.
 7. Each recipient opens a phone page showing the payments received and their value in local currency.
 
@@ -42,7 +42,7 @@ LeashPay keeps the money in a smart contract, the **vault**. The AI agent can on
   │   (Atlas on mainnet, relay on testnet)└──swap USDT ⇄ USDC──▶ DEX          │
   └────────────────────────────────────▲───────────────────────────────────────┘
                                        │ pay / swap / sweep / redeem only
-  Agent server (LLM with tools, viem) ─┘
+  Agent server (Claude, viem) ─────────┘   runs only plans the owner signed
      ├── CoinMarketCap Pro API: local-currency amounts, prices
      ├── Cournot Intelligence Oracle: depeg probability, claim, sources
      └── Living Brain: recipients, preferences, history, attack attempts
@@ -83,7 +83,7 @@ These statuses are updated as each part lands.
 | [`contracts/src/interfaces/`](contracts/src/interfaces/) | The vault's frozen interface: `ILeashVault`, `ILeashVaultFactory`, `IPriceFeed`, `IFaucetToken` |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
-| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault. Tested against a simulated vault; not yet run against deployed contracts. |
+| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. Tested against a simulated vault; not yet run against deployed contracts. |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 

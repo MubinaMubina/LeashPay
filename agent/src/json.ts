@@ -1,4 +1,3 @@
-import type { Address, Hex } from "viem";
 import type { Plan, PlannedPayment } from "./plan/build";
 
 /** JSON.stringify replacer: bigints become decimal strings. */
@@ -18,9 +17,6 @@ export type PlanJson = Omit<Plan, "payments"> & { payments: PaymentJson[] };
 export function planFromJson(json: PlanJson): Plan {
   return {
     ...json,
-    owner: json.owner as Address,
-    vault: json.vault as Address | null,
-    ref: json.ref as Hex,
     payments: json.payments.map((p) => ({ ...p, amount: p.amount === null ? null : BigInt(p.amount) })),
   };
 }

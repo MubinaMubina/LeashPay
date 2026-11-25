@@ -9,10 +9,9 @@
 // contracts/abi/frozen-signatures.txt.
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import solc from "solc";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 const repoRoot = path.resolve(here, "../..");
 const interfacesDir = "contracts/src/interfaces";
 const outFile = path.resolve(here, "../src/abi/generated.ts");

@@ -42,7 +42,28 @@ export interface PayStep {
   ref: Hex;
 }
 
-export type ReceiptStatus = "success" | "reverted" | "pending" | "unknown";
+/** What the chain says about a pay() transaction the agent signed. */
+export type PaymentCheck =
+  /** In a finalized block, and the vault emitted the matching Paid event. */
+  | { status: "paid"; hash: Hex }
+  /**
+   * Reverted, or mined without paying. `hash` is always the agent's own transaction;
+   * `replacedBy` names the one that took its nonce, when that happened.
+   */
+  | { status: "not_paid"; hash: Hex; reason: string; replacedBy?: Hex }
+  /** Waiting to be mined, or mined but not final yet. */
+  | { status: "pending" }
+  /** The chain doesn't know this transaction: it never arrived, or was dropped. */
+  | { status: "unknown" };
+
+/** A pay() transaction signed by the agent key, not sent yet. Its hash is known before it is broadcast. */
+export interface SignedPayment {
+  hash: Hex;
+  /** Sends it. If this throws, the network may or may not have received it; check the hash later. */
+  broadcast(): Promise<void>;
+  /** Gives back the nonce it reserved, when it will never be broadcast. */
+  discard(): void;
+}
 
 /**
  * Everything the agent does on-chain goes through this interface, so tests can
@@ -54,10 +75,20 @@ export interface VaultGateway {
   deployment(): Promise<DeploymentConfig>;
   vaultOf(owner: Address): Promise<Address | null>;
   snapshot(vault: Address): Promise<VaultSnapshot>;
-  /** Runs pay() as a simulation. Returns the vault's refusal, or null if it would go through. */
-  previewPay(vault: Address, step: PayStep): Promise<VaultRevert | null>;
-  /** Simulates pay() and sends it. Throws VaultRevertError if the vault refuses in simulation. */
-  sendPay(vault: Address, step: PayStep): Promise<Hex>;
-  waitForReceipt(hash: Hex): Promise<"success" | "reverted">;
-  receiptStatus(hash: Hex): Promise<ReceiptStatus>;
+  /**
+   * Runs pay() as a simulation. Returns the vault's refusal, or null if it would go through.
+   * `as` is the vault's agent, the caller to simulate when no agent key is configured.
+   */
+  previewPay(vault: Address, step: PayStep, as: Address): Promise<VaultRevert | null>;
+  /** Simulates pay() and signs it without sending. Throws VaultRevertError if the vault refuses. */
+  signPay(vault: Address, step: PayStep): Promise<SignedPayment>;
+  /** Waits, up to a time limit, until the transaction (or one that replaced it) is final. */
+  waitForPayment(vault: Address, step: PayStep, hash: Hex): Promise<PaymentCheck>;
+  /** Looks once, without waiting. */
+  checkPayment(vault: Address, step: PayStep, hash: Hex): Promise<PaymentCheck>;
+  /**
+   * True when the vault, as of the latest finalized block, already counts this payment
+   * as made (its DuplicatePayment check). Proves a payment the journal has no hash for.
+   */
+  paidAsOfFinality(vault: Address, step: PayStep): Promise<boolean>;
 }

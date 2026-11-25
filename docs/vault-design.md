@@ -95,7 +95,7 @@ The owner's "switch coins above X% depeg risk" threshold lives in the agent, not
 
 Each `(ref, recipient)` pair can be paid only once; a second attempt reverts `DuplicatePayment`. A retry after a network timeout is safe by construction.
 
-`pay` is the last step of a plan, which may first redeem from the T-bill and swap. Those earlier steps are protected on the agent side: the agent server records each step's transaction, runs one plan per vault at a time, and checks the chain before retrying.
+`pay` is the last step of a plan, which may first redeem from the T-bill and swap. Those earlier steps are protected on the agent side: the agent server records each step's transaction, runs one plan at a time, and checks the chain before retrying.
 
 ### One payment per transaction
 

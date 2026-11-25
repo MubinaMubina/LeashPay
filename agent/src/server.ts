@@ -3,27 +3,23 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app";
 import { ViemVaultGateway, createChainClients } from "./chain/viem-gateway";
-import { loadConfig } from "./config";
+import { claudeApiKey, isLoopback, loadConfig, localHostHeaders } from "./config";
 import { Executor } from "./execution/executor";
 import { Journal } from "./execution/journal";
+import { lockDataDir } from "./execution/lock";
 import { RecipientDirectory } from "./plan/directory";
 import { draftPlan } from "./plan/planner";
 
 const config = loadConfig();
+lockDataDir(config.DATA_DIR); // one server per data folder
 const { publicClient, walletClient } = createChainClients(config);
 const gateway = new ViemVaultGateway(publicClient, walletClient, config.FACTORY_ADDRESS ?? null);
 const journal = new Journal(path.join(config.DATA_DIR, "journal.jsonl"));
 const directory = new RecipientDirectory(path.join(config.DATA_DIR, "recipients.json"));
-const anthropic = new Anthropic(); // resolves ANTHROPIC_API_KEY (or an `ant auth login` profile)
-
-const executor = new Executor({
-  gateway,
-  journal,
-  tokenAddress: async (symbol) => {
-    const deployment = await gateway.deployment();
-    return symbol === "USDC" ? deployment.usdc : deployment.usdt;
-  },
-});
+const apiKey = claudeApiKey(config);
+const anthropic = new Anthropic(apiKey ? { apiKey } : {}); // no key: the SDK tries an `ant auth login` profile
+const executor = new Executor({ gateway, journal });
+const local = isLoopback(config.AGENT_HOST);
 
 const app = createApp({
   gateway,
@@ -32,11 +28,21 @@ const app = createApp({
   journal,
   executor,
   apiToken: config.AGENT_API_TOKEN,
+  // Only this machine can connect, so only its own names are valid in the Host header.
+  allowedHosts: local ? localHostHeaders(config) : undefined,
 });
 
-serve({ fetch: app.fetch, port: config.PORT }, (info) => {
-  console.log(`LeashPay agent listening on http://localhost:${info.port}`);
+serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (info) => {
+  const host = config.AGENT_HOST.includes(":") ? `[${config.AGENT_HOST}]` : config.AGENT_HOST;
+  const where = local ? `http://${host}:${info.port} (this machine only)` : `http://${host}:${info.port}`;
+  console.log(`LeashPay agent listening on ${where}`);
   console.log(`  agent key:  ${gateway.agentAddress ?? "not set (AGENT_PRIVATE_KEY)"}`);
   console.log(`  factory:    ${config.FACTORY_ADDRESS ?? "not set yet (FACTORY_ADDRESS)"}`);
   console.log(`  model:      ${config.ANTHROPIC_MODEL}`);
+  if (!config.ANTHROPIC_API_KEY && config.LLM_API_KEY) {
+    console.log("  note:       using LLM_API_KEY; rename it to ANTHROPIC_API_KEY in .env");
+  }
 });
+
+// Exit through process.exit on Ctrl-C or a restart, so the data-folder lock is released.
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => process.exit(0));

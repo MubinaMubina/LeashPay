@@ -41,8 +41,9 @@ const time = (value: unknown) => {
 
 type Describe = (args: readonly unknown[], symbol: (token: unknown) => string) => string;
 
-// Mirrors the "Message to show" column of docs/vault-abi.md. The Record type makes
-// the compiler reject this file if an error is added to the ABI without a message.
+// Wording follows the "Message to show" column of docs/vault-abi.md, with each
+// error's own values filled in (amount requested, caller, vault). The Record type
+// makes the compiler reject this file if an error is added to the ABI without a message.
 const MESSAGES: Record<VaultErrorName, Describe> = {
   Unauthorized: ([caller]) => `Not allowed: ${short(caller)} doesn't have the role this action needs.`,
   VaultPaused: () => "The vault is paused by its owner. Nothing goes out until it's resumed.",

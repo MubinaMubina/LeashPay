@@ -1,12 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { faucetTokenAbi, leashVaultAbi, leashVaultFactoryAbi, priceFeedAbi } from "../src/abi/generated";
 import { tempDir } from "./fakes";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 const repoRoot = path.resolve(here, "../..");
 
 describe("generated ABI", () => {

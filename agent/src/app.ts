@@ -1,16 +1,20 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { Hono } from "hono";
-import { formatUnits, getAddress, isAddress, type Address } from "viem";
+import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from "viem";
 import { z } from "zod";
-import type { VaultGateway } from "./chain/gateway";
+import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
 import { ConfigurationError } from "./config";
-import { VaultBusyError, type Executor } from "./execution/executor";
+import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
+import { AgentBusyError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
 import { toJson, type PlanJson } from "./json";
-import { buildPlan, isExecutable } from "./plan/build";
-import { RecipientEntrySchema, type RecipientDirectory } from "./plan/directory";
+import { buildPlan, isDue, isExecutable, planLimitNotes, type Plan } from "./plan/build";
+import { DataFileError, DirectoryRuleError, RecipientEntrySchema, type RecipientDirectory } from "./plan/directory";
 import { PlannerError, type PlannerInput } from "./plan/planner";
 import type { PlanDraft } from "./plan/schema";
+import { AddressSchema } from "./validation";
 
 export interface AppDeps {
   gateway: VaultGateway;
@@ -20,19 +24,66 @@ export interface AppDeps {
   executor: Executor;
   /** When set, every route except /health needs `Authorization: Bearer <token>`. */
   apiToken?: string;
+  /**
+   * Host headers to accept, such as "localhost:8787". Set when the server listens on
+   * this machine only, so a web page can't reach it through a DNS name that points here.
+   */
+  allowedHosts?: string[];
   now?: () => Date;
   newId?: () => string;
 }
 
-const AddressParam = z
-  .string()
-  .refine((value) => isAddress(value, { strict: false }), "must be a 0x address")
-  .transform((value) => getAddress(value) as Address);
+/** The caller's request is wrong; the message says how. */
+class BadRequestError extends Error {
+  constructor(
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "BadRequestError";
+  }
+}
+
+async function readJson(c: Context): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch {
+    throw new BadRequestError("The request body is not valid JSON.");
+  }
+}
+
+/** Validates caller input. Only these failures are the caller's 400; anything else is the server's. */
+function input<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new BadRequestError("Invalid request.", z.flattenError(result.error));
+  return result.data;
+}
 
 const CreatePlanBody = z.object({
-  owner: AddressParam,
+  owner: AddressSchema,
   message: z.string().trim().min(1).max(2000),
 });
+
+const DirectoryBody = RecipientEntrySchema.extend({ owner: AddressSchema });
+
+/** The owner's signed approval, from GET /plans/:id/approval and the owner's wallet. */
+const ExecuteBody = z.object({
+  expires: z.iso.datetime(),
+  signature: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]+$/, "must be a 0x hex signature")
+    .transform((value) => value as Hex),
+  payEarly: z.boolean().default(false),
+});
+
+/** Allowed drift between the server's clock and the one that set `expires`. */
+const CLOCK_SKEW_MS = 60_000;
+
+const PREVIEW_UNAVAILABLE =
+  "The vault couldn't be asked about these payments just now (the BSC node didn't answer). They are checked again when the plan runs.";
+
+// Hashing both sides gives equal-length inputs, so timingSafeEqual can compare them in constant time.
+const digest = (value: string) => createHash("sha256").update(value).digest();
 
 /** The owner's vault, or null when there is none or no factory is configured yet. */
 async function findVault(gateway: VaultGateway, owner: Address): Promise<Address | null> {
@@ -44,29 +95,78 @@ async function findVault(gateway: VaultGateway, owner: Address): Promise<Address
   }
 }
 
+/**
+ * Simulates every payment of the plan at once, so the owner sees the vault's own
+ * verdict on each, then notes when the accepted ones can't all go through
+ * together. A node that doesn't answer leaves a warning, never a lost plan.
+ */
+async function preview(gateway: VaultGateway, vault: Address, snapshot: VaultSnapshot, plan: Plan): Promise<void> {
+  let tokens: DeploymentConfig;
+  try {
+    tokens = await gateway.deployment();
+  } catch (err) {
+    console.error(`plan ${plan.id}: couldn't read the deployment for previews`, err);
+    plan.notes.push(PREVIEW_UNAVAILABLE);
+    return;
+  }
+  await Promise.all(
+    plan.payments.filter(isExecutable).map(async (payment) => {
+      const step = {
+        recipient: payment.recipient,
+        token: payment.token === "USDC" ? tokens.usdc : tokens.usdt,
+        amount: payment.amount,
+        ref: plan.ref,
+      };
+      try {
+        payment.preview = await gateway.previewPay(vault, step, snapshot.agent);
+      } catch (err) {
+        console.error(`plan ${plan.id}: preview failed for ${payment.recipient}`, err);
+        payment.warnings.push(
+          "The vault couldn't be asked about this payment just now (the BSC node didn't answer). It is checked again when the plan runs.",
+        );
+      }
+    }),
+  );
+  plan.notes.push(...planLimitNotes(plan, snapshot));
+}
+
 export function createApp(deps: AppDeps) {
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? (() => crypto.randomUUID());
+  const expectedAuth = deps.apiToken ? digest(`Bearer ${deps.apiToken}`) : null;
   const app = new Hono();
 
   app.use("*", async (c, next) => {
-    if (deps.apiToken && c.req.path !== "/health" && c.req.header("authorization") !== `Bearer ${deps.apiToken}`) {
+    // DNS rebinding: a page on evil.example whose name points at 127.0.0.1 still sends "Host: evil.example".
+    if (deps.allowedHosts && !deps.allowedHosts.includes((c.req.header("host") ?? "").toLowerCase())) {
+      return c.json({ error: "This agent only answers requests addressed to this machine." }, 403);
+    }
+    if (expectedAuth && c.req.path !== "/health" && !timingSafeEqual(digest(c.req.header("authorization") ?? ""), expectedAuth)) {
       return c.json({ error: "Missing or wrong API token." }, 401);
+    }
+    // Any web page can post text/plain to localhost without asking. A JSON post needs a
+    // CORS preflight first, and this server never grants one.
+    if (c.req.method === "POST" && !(c.req.header("content-type") ?? "").toLowerCase().startsWith("application/json")) {
+      return c.json({ error: "Send the body as JSON, with content-type: application/json." }, 415);
     }
     await next();
   });
+  app.use("*", bodyLimit({ maxSize: 32 * 1024, onError: (c) => c.json({ error: "The request body is too large." }, 413) }));
 
   app.get("/health", (c) => c.json({ ok: true, agent: deps.gateway.agentAddress }));
 
-  app.get("/directory", (c) => c.json(deps.directory.list()));
+  app.get("/directory", (c) => {
+    const owner = input(AddressSchema, c.req.query("owner"));
+    return c.json(deps.directory.list(owner));
+  });
 
   app.post("/directory", async (c) => {
-    const entry = RecipientEntrySchema.parse(await c.req.json());
-    return c.json(deps.directory.upsert(entry), 201);
+    const { owner, ...entry } = input(DirectoryBody, await readJson(c));
+    return c.json(deps.directory.upsert(owner, entry), 201);
   });
 
   app.get("/vaults/:owner", async (c) => {
-    const owner = AddressParam.parse(c.req.param("owner"));
+    const owner = input(AddressSchema, c.req.param("owner"));
     const vault = await deps.gateway.vaultOf(owner);
     if (!vault) return c.json({ error: "This owner has no vault yet.", owner }, 404);
     return c.json(toJson(await deps.gateway.snapshot(vault)));
@@ -75,10 +175,10 @@ export function createApp(deps: AppDeps) {
   // Owner's message in, reviewed plan out. Nothing is sent on-chain here: each
   // payment is only simulated against the vault, so the owner sees its verdict.
   app.post("/plans", async (c) => {
-    const body = CreatePlanBody.parse(await c.req.json());
+    const body = input(CreatePlanBody, await readJson(c));
     const vault = await findVault(deps.gateway, body.owner);
     const snapshot = vault ? await deps.gateway.snapshot(vault) : null;
-    const directory = deps.directory.list();
+    const directory = deps.directory.list(body.owner);
     const at = now();
 
     const draft = await deps.planner({
@@ -94,19 +194,7 @@ export function createApp(deps: AppDeps) {
         : undefined,
     });
     const plan = buildPlan(draft, { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at });
-
-    if (vault) {
-      const tokens = await deps.gateway.deployment();
-      for (const payment of plan.payments) {
-        if (!isExecutable(payment)) continue;
-        payment.preview = await deps.gateway.previewPay(vault, {
-          recipient: payment.recipient,
-          token: payment.token === "USDC" ? tokens.usdc : tokens.usdt,
-          amount: payment.amount,
-          ref: plan.ref,
-        });
-      }
-    }
+    if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });
     return c.json(toJson(plan), 201);
@@ -118,21 +206,72 @@ export function createApp(deps: AppDeps) {
     return c.json(toJson({ plan, events: deps.journal.eventsFor(plan.id) }));
   });
 
-  // The owner confirmed the plan: run it. Safe to call again; finished payments are not repeated.
-  app.post("/plans/:id/execute", async (c) => {
-    const plan = deps.journal.plan(c.req.param("id"));
-    if (!plan) return c.json({ error: "No plan with that id." }, 404);
+  /** Why a plan can't be run at all, if it can't. */
+  const notRunnable = (c: Context, plan: Plan) => {
     if (!plan.vault) {
       return c.json({ error: "This plan has no vault: the owner had no vault (or no factory was configured) when it was made." }, 422);
     }
+    if (plan.kind !== "payment") return c.json({ error: "This message wasn't a payment request, so there is nothing to run." }, 422);
+    return null;
+  };
+
+  // The text the owner's wallet signs to run the plan, valid for APPROVAL_TTL_MS and usable once.
+  app.get("/plans/:id/approval", (c) => {
+    const plan = deps.journal.plan(c.req.param("id"));
+    if (!plan) return c.json({ error: "No plan with that id." }, 404);
+    const refusal = notRunnable(c, plan);
+    if (refusal) return refusal;
+    const payEarly = c.req.query("payEarly") === "true";
+    const expires = new Date(now().getTime() + APPROVAL_TTL_MS).toISOString();
+    return c.json({ message: approvalMessage(plan, { expires, payEarly }), expires, payEarly });
+  });
+
+  // The owner approved the plan with their wallet: run it. Safe to call again with a
+  // fresh approval; payments that went through are never repeated.
+  app.post("/plans/:id/execute", async (c) => {
+    const plan = deps.journal.plan(c.req.param("id"));
+    if (!plan) return c.json({ error: "No plan with that id." }, 404);
+    const refusal = notRunnable(c, plan);
+    if (refusal) return refusal;
+
+    const approval = input(ExecuteBody, await readJson(c));
+    const at = now();
+    const expires = Date.parse(approval.expires);
+    if (expires <= at.getTime()) return c.json({ error: "This approval has expired. Sign the plan again." }, 401);
+    if (expires - at.getTime() > APPROVAL_TTL_MS + CLOCK_SKEW_MS) {
+      return c.json(
+        { error: `An approval can be valid for at most ${APPROVAL_TTL_MS / 60_000} minutes. Get a new one from /approval.` },
+        400,
+      );
+    }
+    const message = approvalMessage(plan, approval);
+    if (!(await signedByOwner(plan.owner, message, approval.signature))) {
+      return c.json({ error: "This approval isn't signed by the plan's owner." }, 401);
+    }
+    if (!approval.payEarly && !isDue(plan, at)) {
+      return c.json(
+        { error: `This plan is scheduled for ${plan.scheduledFor} (UTC). Run it on that day, or approve paying early.` },
+        409,
+      );
+    }
+    // Each approval runs its plan once, so replaying it later in its window can't push through
+    // a payment the vault refused when the owner signed. It is keyed on the signed text, not the
+    // signature bytes, so a reshaped signature over the same text is the same approval.
+    const approvalId = keccak256(toHex(message));
+    if (deps.journal.eventsFor(plan.id).some((e) => e.type === "approval_used" && e.approval === approvalId)) {
+      return c.json({ error: "This approval was already used. Sign the plan again to run it again." }, 401);
+    }
+    deps.journal.append({ type: "approval_used", planId: plan.id, approval: approvalId });
+
     const results = await deps.executor.execute(plan);
     return c.json(toJson({ planId: plan.id, results }));
   });
 
   app.onError((err, c) => {
-    if (err instanceof z.ZodError) return c.json({ error: "Invalid request.", details: z.flattenError(err) }, 400);
-    if (err instanceof SyntaxError) return c.json({ error: "The request body is not valid JSON." }, 400);
-    if (err instanceof VaultBusyError) return c.json({ error: err.message }, 409);
+    if (err instanceof BadRequestError) {
+      return c.json({ error: err.message, ...(err.details === undefined ? {} : { details: err.details }) }, 400);
+    }
+    if (err instanceof DirectoryRuleError || err instanceof AgentBusyError) return c.json({ error: err.message }, 409);
     if (err instanceof ConfigurationError) return c.json({ error: err.message }, 503);
     if (err instanceof PlannerError) return c.json({ error: err.message }, 502);
     if (err instanceof Anthropic.AuthenticationError) {
@@ -140,6 +279,9 @@ export function createApp(deps: AppDeps) {
     }
     if (err instanceof Anthropic.APIError) return c.json({ error: `Claude API error: ${err.message}` }, 502);
     console.error(err);
+    // viem's own message can include the RPC URL, and with it a provider key: never send it back.
+    if (err instanceof BaseError) return c.json({ error: "The BSC node didn't answer as expected. Try again in a moment." }, 502);
+    if (err instanceof DataFileError) return c.json({ error: err.message }, 500);
     return c.json({ error: "Something went wrong in the agent server." }, 500);
   });
 
