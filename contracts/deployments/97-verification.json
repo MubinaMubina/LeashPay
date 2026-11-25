@@ -1,0 +1,63 @@
+{
+  "chainId": 97,
+  "contracts": {
+    "usdt": {
+      "address": "0x0081297D056308340E5501B5F2f076344A46aB44",
+      "contract": "src/mocks/MockToken.sol:MockToken",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0x0081297D056308340E5501B5F2f076344A46aB44#code"
+    },
+    "usdc": {
+      "address": "0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421",
+      "contract": "src/mocks/MockToken.sol:MockToken",
+      "match": "similar",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421#code",
+      "similarTo": "0x0081297d056308340e5501b5f2f076344a46ab44",
+      "creationTransaction": "0x98969168dcbab3f92f5c148628e391af75ccd4521eab1dcb71e59886c39e2895"
+    },
+    "usdtFeed": {
+      "address": "0x1340584cB70f8C660dCe87E3a503ED9F0866B73C",
+      "contract": "src/AtlasRelayFeed.sol:AtlasRelayFeed",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0x1340584cB70f8C660dCe87E3a503ED9F0866B73C#code"
+    },
+    "usdcFeed": {
+      "address": "0xCEfEAD2402C3F612187000258AFf686899370D82",
+      "contract": "src/AtlasRelayFeed.sol:AtlasRelayFeed",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0xCEfEAD2402C3F612187000258AFf686899370D82#code"
+    },
+    "tbill": {
+      "address": "0xC821eC5277Ff38601B44e59c6e756C23ddCB021d",
+      "contract": "src/mocks/MockTBill.sol:MockTBill",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0xC821eC5277Ff38601B44e59c6e756C23ddCB021d#code"
+    },
+    "dex": {
+      "address": "0x5BE028F7Ec3EB4Fc4CF8277e0501673F9c4E75E1",
+      "contract": "src/mocks/MockDEX.sol:MockDEX",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0x5BE028F7Ec3EB4Fc4CF8277e0501673F9c4E75E1#code"
+    },
+    "factory": {
+      "address": "0x80b66347374C6df4f157368497201aa63a371f60",
+      "contract": "src/LeashVaultFactory.sol:LeashVaultFactory",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0x80b66347374C6df4f157368497201aa63a371f60#code"
+    },
+    "vault": {
+      "address": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+      "contract": "src/LeashVault.sol:LeashVault",
+      "match": "exact",
+      "compiler": "v0.8.28+commit.7893614a",
+      "explorer": "https://testnet.bscscan.com/address/0x1df5aba120b14d2dd3878b876d9676c5a503b3d2#code"
+    }
+  }
+}

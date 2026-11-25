@@ -68,7 +68,7 @@
 
 - [x] Simulate deployment and smoke scenario locally; expected: factory creates the owner vault, funding and allowlist succeed, then exactly one payment transfers the expected mock tokens.
 - [x] Verify chain ID, funded account and unchanged local key/address mapping; deploy only after tests and review pass, saving receipts before retries.
-- [x] Record public addresses and set both factory variables locally. BscScan submission was blocked before execution by automatic approval review; publication awaits explicit user approval.
+- [x] Record public addresses and set both factory variables locally. BscScan source publication was approved on 26 November.
 - [x] Send a sponsored agent payment using the official MegaFuel testnet procedure. Confirm receipt, recipient balance delta, Paid event and sponsorship evidence; do not call ordinary paid gas a sponsored success.
 - [x] Check duplicate-ref and unauthorized-recipient refusals through read-only simulation. Save reproducible instructions and testnet-only limitations.
 - [x] Run the final full suite, frozen ABI and diff checks; commit source/docs only, leaving secrets and broadcast journals ignored.
@@ -79,4 +79,8 @@ Implementation started from commit `750eb57`. Core commit `bd2ea36` and review-f
 
 56 tests pass, including two 256-case fuzz properties. All 64 frozen signatures are unchanged. Seven contracts plus a factory-created demo vault are deployed on chain 97. The sponsored 1 mock USDT payment is recorded in `contracts/deployments/97-smoke.json`; receipt and refusal checks are in `97-checks.json`.
 
-Pending external step: publish and verify the eight contract sources on BscScan after explicit authorization. The local verification command is ready; automatic approval review rejected its first invocation before it ran. Continuous relay hosting and LLM/UI integration remain later roadmap work.
+The source for all eight addresses is available on BscScan. Seven have an exact match.
+For mUSDC, the explorer links the mUSDT implementation and the creation transaction confirms
+its own constructor arguments. [Addresses and verification results](../../../contracts/README.md#contract-sources-on-bscscan)
+
+Continuous relay hosting and LLM/UI integration remain later roadmap work.

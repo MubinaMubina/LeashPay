@@ -89,9 +89,13 @@ These statuses are updated as each part lands.
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
-Still to come, per the roadmap: the agent's CoinMarketCap, Cournot and Living Brain integrations; the dashboard and recipient page (`web/`); and the demo video. Source
-publication on BscScan awaits approval. Hosting will be reconfirmed at deployment;
-Vercel is the current preference, with Cloudflare still an option. To run the agent today, see [agent/README.md](agent/README.md).
+All eight deployed addresses now have readable source on BscScan Testnet. The demo vault
+and factory have exact matches. [Contract addresses and verification results](contracts/README.md#contract-sources-on-bscscan)
+
+The roadmap still includes the agent's CoinMarketCap, Cournot and Living Brain integrations,
+the dashboard and recipient page (`web/`), and the demo video. The team currently prefers
+Vercel and will confirm the hosting choice at deployment, with Cloudflare still an option.
+For instructions on running the agent, see the [agent README](agent/README.md).
 
 ## Roadmap
 
@@ -107,11 +111,55 @@ Vercel is the current preference, with Cloudflare still an option. To run the ag
 
 ## Run locally
 
+From the repository root, run `make seed-demo` to prepare the three testnet
+payees for “Pay my 3 freelancers”. The command checks the existing vault and
+simulates a 1 mUSDT payment to each payee. Builder B can use the names,
+addresses and local currencies from the [public demo roster](contracts/deployments/97-demo-recipients.json).
+See [demo setup and retries](contracts/README.md#prepare-the-three-demo-payees).
+
+Run `make pay-demo` to send the three real testnet payments and see each
+payee's balance increase and BscScan receipt. Run `make verify-demo-payments`
+to check the same batch again in read-only mode.
+[Confirmed payments to Linh, Marco and Mai on BscScan](contracts/README.md#three-confirmed-payroll-receipts)
+
 From the repository root, `make start` runs the Atlas relay in the current
 terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
 stop it, or use `make stop` from another terminal. Use `make status` to check
 whether it is running and `make logs` to see recent activity. After reboot,
 start it manually for the demo. `make help` lists setup and test commands.
+
+### Live terminal checks
+
+Run these from the repository root with the project `.env`. Install the agent
+dependencies once with `npm ci --prefix agent` (Node 22 or later). Each command
+contacts the service and exits with an error if its evidence is missing.
+
+| Command | What you can show on screen |
+|---|---|
+| `make test-cmc` | The timestamped CoinMarketCap Pro PHP quote for 1 USDT. The testnet token represents USDT for this conversion. |
+| `make test-atlas` | Live BSC mainnet USDT and USDC observations compared with the testnet vault's prices, timestamps and freshness limits. |
+| `make test-cournot` | A USDC depeg market, its probability and sources, and the coin selected by the demo threshold. The call uses the provider's quota. |
+| `make test-brain` | One synthetic preference written to Living Brain, found via search and checked against the page compiled from that capture. Each run creates a new demo note. |
+| `make test-agent` | An actual Claude API call through the agent's planner. The test checks each of the three recipients, addresses, tokens and amounts. |
+| `make test-privy` | A real LeashPay session with a verified signature, issuer, app ID and expiry. Enable a Privy test account or supply a current `PRIVY_ACCESS_TOKEN` locally from the app. |
+| `make test-paiement RUN=jury-1` | One actual sponsored transfer of 1 mUSDT to Marco, his balance before and after, agent gas and a BscScan receipt. |
+| `make test-demo RUN=jury-1` | Claude plans one payment to Marco. The terminal checks the plan, fetches the PHP quote and the Atlas prices, then runs the sponsored transfer. |
+
+The two payment commands share the same run ID. Reusing it on the same Mac
+verifies the recorded payment. A new ID sends another 1 mUSDT, subject to the
+vault's caps and cooldown. Without `RUN`, the command resumes an interrupted
+transfer or starts a new one. Keep the local `.setup/` transaction journal.
+The terminal uses the demo signer and MegaFuel. To exercise the UI's owner
+approval, run the payment from the app. [Live terminal payment to Marco](https://testnet.bscscan.com/tx/0x9842fec16b5c798a4c22cb2411573c1c530bd8c8e0905123ba0ae24cbcd75b3d)
+
+During the 26 November rehearsal, Privy issued a signed test session. Living
+Brain accepted reads and refused the new capture with HTTP 402 because the
+project's prepaid memory balance was insufficient.
+
+- [ ] **Living Brain credits.** Ask the ChatAndBuild team at the hackathon booth
+  for memory credits for the LeashPay project when the booth opens in Bangkok.
+  Once credited, run `make test-brain` and check that it writes a new preference
+  and finds that same preference through search. Then tick this item.
 
 ## Documentation
 

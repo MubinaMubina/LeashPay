@@ -54,7 +54,7 @@ has `effectiveGasPrice = 0`, and the agent's BNB balance is unchanged across the
 payment block. Evidence is in [97-smoke.json](deployments/97-smoke.json) and the
 read-only receipt/event/revert checks in [97-checks.json](deployments/97-checks.json).
 This validates the contract and agent signing key; the LLM agent and web UI still
-need integration. Source publication on BscScan is pending explicit approval.
+need integration.
 
 From the repository root, create an isolated Python environment and install the
 operational dependencies:
@@ -80,10 +80,89 @@ uses the server-side NodeReal key with its
 to reread balances at the payment block, as well as validate the receipt and
 simulate both refusals. This command sends no transactions.
 
-After source-publication approval, `scripts/verify-testnet.py` uses the local
-Etherscan key to submit the seven deployed contracts and the demo vault. It stores
-only redacted logs locally and public verification outcomes in the deployments
-directory. No key belongs in a command-line argument or a committed file.
+### Prepare the three demo payees
+
+From the repository root, run `make seed-demo`. It uses the existing demo
+vault on BSC testnet (97). The [demo roster](deployments/97-demo-recipients.json)
+contains three fictional profiles for the Bangkok agency. Linh uses the
+controlled address from the original smoke payment. Marco and Mai use separate
+test wallets. Builder B can load the public roster for display and planning.
+Only each address, its permission and its cap are written to the vault.
+
+| Profile | Country | Display currency | Monthly cap in stablecoin units |
+|---|---|---|---:|
+| Linh | Vietnam | VND | 1,000 (existing) |
+| Marco | Philippines | PHP | 10 |
+| Mai | Vietnam | VND | 10 |
+
+The demo payroll is 1 mUSDT per person. The seed checks the combined liquid
+balance and daily budget, each monthly allowance, and the deployed owner
+and agent. It registers missing payees with the owner's testnet key, then
+simulates the three payments as the agent using `eth_call`. This checks the
+current token, cooldown and price rules. Actual payouts are a separate action.
+
+Set `BSC_TESTNET_RPC_URL` in the root `.env`. Adding a payee or recovering a
+pending setup transaction also requires `DEPLOYER_PRIVATE_KEY` and gas in tBNB.
+An already configured vault can be checked using the RPC alone. If interrupted,
+rerun the same command with the existing local transaction journal. Matching
+permissions are skipped. Conflicting existing caps are reported for owner review.
+If a payment simulation reports a stale price, refresh the Atlas relay and rerun.
+
+Run `make pay-demo` to send 1 mUSDT from the vault to each of the three
+addresses. The agent submits three separate transactions through MegaFuel.
+The command prints each BscScan receipt and the payee's balance before and
+after the payment block. It checks the vault's `Paid` event, the token's
+`Transfer` event and the 1 mUSDT increase. The local journal records each
+transaction before submission. After an interruption, rerun `make pay-demo`
+on the same Mac to finish this batch. Each payee keeps the same on-chain
+payment reference across retries. Use `make verify-demo-payments` on the
+same checkout to replay the recorded receipts in read-only mode.
+
+On 26 November 2026, the first run registered [Marco](https://testnet.bscscan.com/tx/0x47756bdc5e6fc36bc647afc7b5798488c0116074bf20e6eb952aaadf4efbaec2)
+and [Mai](https://testnet.bscscan.com/tx/0xed9c35052970f1e054b297907a3fc22ecff6cdb89089e45cde14613ab9f3e7e2).
+The second run sent zero transactions. Across its verification window, the
+owner nonce stayed at 17, the agent nonce stayed at 5, the vault held 993 mUSDT
+and all three payee records and balances matched. [Two-run testnet evidence](deployments/97-demo-seed-proof.json)
+
+### Three confirmed payroll receipts
+
+On 26 November 2026, `make pay-demo` sent 3 mUSDT from the demo vault on BSC
+testnet. Each row shows the recipient's mUSDT balance immediately before and
+after their payment block.
+
+| Recipient | Before (mUSDT) | After (mUSDT) | BscScan Testnet receipt |
+|---|---:|---:|---|
+| Linh | 6 | 7 | [Linh's payment](https://testnet.bscscan.com/tx/0x6592ffa6510ae5b982184553b6e9300e43865d747d98f0ba034fa28c5c3bdcf2) |
+| Marco | 0 | 1 | [Marco's payment](https://testnet.bscscan.com/tx/0x96679c473e4d8c7664dd41b7777b55d7ab302e9b7a2003dff7117cea567e4d59) |
+| Mai | 0 | 1 | [Mai's payment](https://testnet.bscscan.com/tx/0xcb8d96025d9c902d15b05c6737126b18e7b2df75c0bf903d43855da8125921cb) |
+
+`make verify-demo-payments` confirmed the vault's `Paid` event, the token's
+`Transfer` event, the 1 mUSDT balance increase and zero gas price for the agent
+on all three receipts.
+
+### Contract sources on BscScan
+
+BscScan reports **Exact Match** for seven addresses, including the vault and
+factory. It reports **Similar Match** to the mUSDT implementation for mUSDC.
+We also checked the mUSDC creation bytecode and its own name and symbol
+against the [original deployment transaction](https://testnet.bscscan.com/tx/0x98969168dcbab3f92f5c148628e391af75ccd4521eab1dcb71e59886c39e2895).
+
+| Contract | BSC testnet address |
+|---|---|
+| Demo vault | [`0x1df5aba120b14d2dd3878b876d9676c5a503b3d2`](https://testnet.bscscan.com/address/0x1df5aba120b14d2dd3878b876d9676c5a503b3d2#code) |
+| Vault factory | [`0x80b66347374C6df4f157368497201aa63a371f60`](https://testnet.bscscan.com/address/0x80b66347374C6df4f157368497201aa63a371f60#code) |
+| Mock USDT | [`0x0081297D056308340E5501B5F2f076344A46aB44`](https://testnet.bscscan.com/address/0x0081297D056308340E5501B5F2f076344A46aB44#code) |
+| Mock USDC | [`0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421`](https://testnet.bscscan.com/address/0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421#code) |
+| Atlas USDT relay | [`0x1340584cB70f8C660dCe87E3a503ED9F0866B73C`](https://testnet.bscscan.com/address/0x1340584cB70f8C660dCe87E3a503ED9F0866B73C#code) |
+| Atlas USDC relay | [`0xCEfEAD2402C3F612187000258AFf686899370D82`](https://testnet.bscscan.com/address/0xCEfEAD2402C3F612187000258AFf686899370D82#code) |
+| Mock T-bill | [`0xC821eC5277Ff38601B44e59c6e756C23ddCB021d`](https://testnet.bscscan.com/address/0xC821eC5277Ff38601B44e59c6e756C23ddCB021d#code) |
+| Mock DEX | [`0x5BE028F7Ec3EB4Fc4CF8277e0501673F9c4E75E1`](https://testnet.bscscan.com/address/0x5BE028F7Ec3EB4Fc4CF8277e0501673F9c4E75E1#code) |
+
+Run `make verify-sources` to compare the published Solidity and compiler settings
+with this checkout. The check uses `ETHERSCAN_API_KEY` and `BSC_TESTNET_RPC_URL`.
+It reads the creation transactions for addresses marked **Similar Match** to check
+their original creation bytecode and constructor arguments. The per-address results
+are in [97-verification.json](deployments/97-verification.json).
 
 ## Oracle and demo limitations
 
