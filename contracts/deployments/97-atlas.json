@@ -1,0 +1,19 @@
+{
+  "sourceChainId": 56,
+  "feeds": {
+    "USDT": {
+      "source": "0x9fc000fc9c17578b49853278a517e357201d01e4",
+      "relay": "0x1340584cB70f8C660dCe87E3a503ED9F0866B73C",
+      "answer": 998679004338642663,
+      "updatedAt": 1795595760,
+      "decimals": 18
+    },
+    "USDC": {
+      "source": "0x2fd873e39e65b5f7f0e03e5079ecd4da7fc4067b",
+      "relay": "0xCEfEAD2402C3F612187000258AFf686899370D82",
+      "answer": 999838223910062279,
+      "updatedAt": 1795591921,
+      "decimals": 18
+    }
+  }
+}
