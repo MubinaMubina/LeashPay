@@ -3,6 +3,8 @@
 import { useSignMessage } from "@privy-io/react-auth";
 import { useCallback, useEffect, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
+import { DEMO_ATTACK_ADDRESS } from "@/lib/demo";
+import { RefusalCard, type AttackResultJson } from "./RefusalCard";
 import { errorText, useApi, useOwnerWallet } from "@/lib/client";
 import {
   formatAmount,
@@ -13,6 +15,12 @@ import {
   type PaymentResultJson,
   type PlanJson,
 } from "@/lib/plan-progress";
+
+type Attack =
+  | { stage: "idle" }
+  | { stage: "sending" }
+  | { stage: "done"; result: AttackResultJson }
+  | { stage: "failed"; error: string };
 
 type Run =
   | { kind: "idle" }
@@ -45,6 +53,7 @@ export function PlanCard({
   const [results, setResults] = useState<PaymentResultJson[] | undefined>();
   const [run, setRun] = useState<Run>({ kind: "idle" });
   const [now, setNow] = useState(() => Date.now());
+  const [attack, setAttack] = useState<Attack>({ stage: "idle" });
 
   const refreshEvents = useCallback(async () => {
     const latest = await api<{ events: JournalEventJson[] }>(`plans/${plan.id}`);
@@ -92,6 +101,24 @@ export function PlanCard({
       setRun({ kind: "failed", error: outcome.body.error ?? `The agent answered ${outcome.status}.` });
     }
   }, [api, owner, plan.id, signMessage, refreshEvents, onSettled, onAgentDown]);
+
+  // The demo attack (D15): offered only for a plan whose one payable row is the demo address.
+  const tryAnyway = useCallback(async () => {
+    setAttack({ stage: "sending" });
+    const sent = await api<{ results: AttackResultJson[] }>(`plans/${plan.id}/attack`, { body: {} });
+    await refreshEvents();
+    if (sent.ok && sent.body.results[0]) {
+      setAttack({ stage: "done", result: sent.body.results[0] });
+      onSettled();
+    } else {
+      if (sent.status === 502 && sent.body.error === "agent unreachable") onAgentDown();
+      setAttack({ stage: "failed", error: sent.body.error ?? `The agent answered ${sent.status}.` });
+    }
+  }, [api, plan.id, refreshEvents, onSettled, onAgentDown]);
+
+  const payableRows = plan.payments.filter(isExecutable);
+  const isAttackPlan =
+    payableRows.length === 1 && payableRows[0].recipient?.toLowerCase() === DEMO_ATTACK_ADDRESS.toLowerCase();
 
   const rows = plan.payments.map((payment, i) => ({ payment, status: rowStatus(payment, i, events, now, results) }));
   // A row can still be paid if it's payable, not yet paid and not refused (an unchecked row is
@@ -148,7 +175,28 @@ export function PlanCard({
       )}
       {run.kind === "failed" && <div className="error-card"><p>{run.error}</p></div>}
 
-      {plan.kind === "payment" && plan.vault && !settled && (
+      {isAttackPlan && plan.vault && (
+        <div className="attack-flow">
+          <p className="flagged">Claude flagged this: the address isn't one of your recipients, so you shouldn't approve it.</p>
+          {attack.stage === "idle" && (
+            <div className="actions">
+              <button className="btn danger" onClick={tryAnyway}>
+                Try anyway (demo)
+              </button>
+              <span className="hint">Plays a hacked agent that pays without your signature. The vault decides.</span>
+            </div>
+          )}
+          {attack.stage === "sending" && <p className="busy">Demo: the agent is submitting it anyway…</p>}
+          {attack.stage === "done" && <RefusalCard result={attack.result} balance={null} />}
+          {attack.stage === "failed" && (
+            <div className="error-card">
+              <p>{attack.error}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {plan.kind === "payment" && plan.vault && !settled && !isAttackPlan && (
         <div className="actions">
           {needsCheckAgain(results) ? (
             <button className="btn" onClick={approve} disabled={busy}>
