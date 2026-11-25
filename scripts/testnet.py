@@ -3,6 +3,7 @@
 Run from any directory. Private keys are read from root .env, never printed.
 """
 import argparse
+import fcntl
 import json
 import os
 import shutil
@@ -14,6 +15,7 @@ import requests
 from dotenv import dotenv_values, set_key
 from eth_account import Account
 from eth_abi import encode, decode
+from eth_abi.exceptions import DecodingError
 from eth_utils import keccak, to_checksum_address
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,13 +40,21 @@ def calldata(signature, types=(), values=()):
 
 
 class Testnet:
-    def __init__(self):
-        self.env = dotenv_values(ROOT / '.env')
+    def __init__(self, *, roles=None):
+        config = dotenv_values(ROOT / '.env')
+        if roles is None:
+            roles = ('DEPLOYER', 'AGENT', 'REPORTER')
+            self.env = config
+        else:
+            keys = {'BSC_TESTNET_RPC_URL', 'BSC_MAINNET_RPC_URL'}
+            keys.update(role + '_PRIVATE_KEY' for role in roles)
+            if 'REPORTER' not in roles:
+                keys.update(('NODEREAL_API_KEY', 'MEGAFUEL_POLICY_ID'))
+            self.env = {key: config[key] for key in keys if key in config}
         self.rpc_url = self.env['BSC_TESTNET_RPC_URL']
-        self.accounts = {role: Account.from_key(self.env[role + '_PRIVATE_KEY'])
-                         for role in ('DEPLOYER', 'AGENT', 'REPORTER')}
+        self.accounts = {role: Account.from_key(self.env[role + '_PRIVATE_KEY']) for role in roles}
         addresses = {a.address for a in self.accounts.values()}
-        if len(addresses) != 3:
+        if len(addresses) != len(roles):
             raise RuntimeError('Deployer, agent and reporter must differ')
         self.session = requests.Session()
         self.session.headers['User-Agent'] = 'LeashPay-Testnet/1.0'
@@ -77,8 +87,9 @@ class Testnet:
         return data['result']
 
     def read(self, to, signature, types=(), values=(), outputs=(), *, sender=None, block='latest', mainnet=False):
-        tx = {'to': to, 'from': sender or self.accounts['DEPLOYER'].address,
-              'data': calldata(signature, types, values)}
+        tx = {'to': to, 'data': calldata(signature, types, values)}
+        if sender or self.accounts:
+            tx['from'] = sender or next(iter(self.accounts.values())).address
         raw = self.rpc('eth_call', [tx, block], mainnet=mainnet)
         return decode(outputs, bytes.fromhex(raw[2:])) if outputs else raw
 
@@ -86,8 +97,11 @@ class Testnet:
         data = json.loads(MANIFEST.read_text())
         if data['chainId'] != 97:
             raise RuntimeError('Unexpected manifest chain')
-        if data['deployer'].lower() != self.accounts['DEPLOYER'].address.lower():
-            raise RuntimeError('Manifest deployer differs from local key')
+        for role, signer in self.accounts.items():
+            if data[role.lower()].lower() != signer.address.lower():
+                raise RuntimeError('Manifest identity differs from local signer: ' + role)
+        if len({data[role].lower() for role in ('deployer', 'agent', 'reporter')}) != 3:
+            raise RuntimeError('Deployment roles must differ')
         return data
 
     def receipt(self, tx_hash):
@@ -102,11 +116,28 @@ class Testnet:
         raise RuntimeError(f'Transaction pending; journal retained: {tx_hash}')
 
     def send(self, label, role, to, data, *, sponsored=False):
+        LOCAL.mkdir(parents=True, exist_ok=True)
+        with (LOCAL / 'contract-transactions.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if JOURNAL.exists():
+                self.journal = json.loads(JOURNAL.read_text())
+            return self._send_locked(label, role, to, data, sponsored=sponsored)
+
+    def _send_locked(self, label, role, to, data, *, sponsored):
         account = self.accounts[role]
         existing = self.journal['transactions'].get(label)
         if existing:
             if existing['to'].lower() != to.lower() or existing['data'] != data or existing['from'] != account.address:
                 raise RuntimeError(f'{label}: journal input mismatch')
+            # A timeout during submission is ambiguous. Retry only identical signed bytes.
+            if existing['state'] != 'confirmed' and 'gas' in existing:
+                if self.rpc('eth_getTransactionByHash', [existing['hash']]) is None:
+                    signed = account.sign_transaction({'chainId': 97, 'nonce': existing['nonce'],
+                        'to': to_checksum_address(to), 'value': 0, 'data': data,
+                        'gas': existing['gas'], 'gasPrice': existing['gasPrice']})
+                    if '0x' + signed.hash.hex() != existing['hash']:
+                        raise RuntimeError('Journal does not reproduce original signature')
+                    self.rpc('eth_sendRawTransaction', ['0x' + signed.raw_transaction.hex()], sponsored=sponsored)
             receipt = self.receipt(existing['hash'])
         else:
             tx = {'from': account.address, 'to': to, 'data': data, 'value': '0x0'}
@@ -129,7 +160,7 @@ class Testnet:
             raw = '0x' + bytes(signed.raw_transaction).hex()
             tx_hash = '0x' + bytes(signed.hash).hex()
             self.journal['transactions'][label] = {'from': account.address, 'to': to, 'data': data,
-                'hash': tx_hash, 'nonce': nonce, 'sponsored': sponsored, 'state': 'signed'}
+                'hash': tx_hash, 'nonce': nonce, 'gas': gas, 'gasPrice': gas_price, 'sponsored': sponsored, 'state': 'signed'}
             save(JOURNAL, self.journal)
             returned = self.rpc('eth_sendRawTransaction', [raw], sponsored=sponsored)
             if returned.lower() != tx_hash.lower():
@@ -182,24 +213,41 @@ class Testnet:
         (ROOT/'.env').chmod(0o600)
         print('Factory confirmed and both local factory variables updated: '+manifest['factory'])
 
+    def relay_observation(self, symbol, source, target, max_age):
+        fields = ['uint80', 'int256', 'uint256', 'uint256', 'uint80']
+        decimals, = self.read(source, 'decimals()', outputs=['uint8'], mainnet=True)
+        _, answer, _, updated, _ = self.read(source, 'latestRoundData()', outputs=fields, mainnet=True)
+        if decimals != 18 or answer <= 0 or updated == 0 or not 0 <= int(time.time()) - updated <= max_age:
+            raise RuntimeError('Invalid or stale Atlas source: ' + symbol)
+        mirror = self.read(target, 'latestRoundData()', outputs=fields)
+        if mirror[3] < updated:
+            data = calldata('update(int256,uint256)', ['int256', 'uint256'], [answer, updated])
+            receipt = self.send(f'relay-{symbol}-{updated}', 'REPORTER', target, data)
+            mirror = self.read(target, 'latestRoundData()', outputs=fields, block=receipt['blockNumber'])
+        if (mirror[1], mirror[3]) != (answer, updated):
+            raise RuntimeError('Relay observation differs from source: ' + symbol)
+        return {'source': source, 'relay': target, 'answer': answer, 'updatedAt': updated, 'decimals': decimals}
+
+    def relay_cycle(self):
+        manifest = self.manifest()
+        if manifest.get('status') != 'confirmed':
+            raise RuntimeError('Deployment must be confirmed')
+        if int(self.rpc('eth_chainId', [], mainnet=True), 16) != 56:
+            raise RuntimeError('Atlas source must be BSC mainnet')
+        feeds, errors = {}, {}
+        for symbol, source in SOURCES.items():
+            try:
+                feeds[symbol] = self.relay_observation(symbol, source, manifest[symbol.lower() + 'Feed'],
+                                                      manifest['maxPriceAge'])
+            except (RuntimeError, DecodingError) as exc:
+                errors[symbol] = str(exc)
+        return feeds, errors
+
     def relay(self):
-        m = self.manifest()
-        if m.get('status') != 'confirmed': raise RuntimeError('Deployment must be confirmed')
-        if int(self.rpc('eth_chainId',[],mainnet=True),16) != 56: raise RuntimeError('Atlas source must be BSC mainnet')
-        snapshot = {'sourceChainId':56,'feeds':{}}
-        for symbol, address in SOURCES.items():
-            decimals = self.read(address,'decimals()',outputs=['uint8'],mainnet=True)[0]
-            _,answer,_,updated,_ = self.read(address,'latestRoundData()',outputs=['uint80','int256','uint256','uint256','uint80'],mainnet=True)
-            if decimals != 18 or answer <= 0 or not 0 <= int(time.time())-updated <= m['maxPriceAge']:
-                raise RuntimeError('Invalid or stale Atlas source: '+symbol)
-            target = m[symbol.lower()+'Feed']
-            current = self.read(target,'latestRoundData()',outputs=['uint80','int256','uint256','uint256','uint80'])
-            if current[3] < updated:
-                self.send('relay-'+symbol+'-'+str(updated),'REPORTER',target,calldata('update(int256,uint256)',['int256','uint256'],[answer,updated]))
-            mirrored = self.read(target,'latestRoundData()',outputs=['uint80','int256','uint256','uint256','uint80'])
-            if mirrored[1] != answer or mirrored[3] != updated: raise RuntimeError('Relay mismatch')
-            snapshot['feeds'][symbol]={'source':address,'relay':target,'answer':answer,'updatedAt':updated,'decimals':decimals}
-        save(ROOT/'contracts/deployments/97-atlas.json',snapshot)
+        feeds, errors = self.relay_cycle()
+        if errors:
+            raise RuntimeError(json.dumps(errors))
+        save(ROOT / 'contracts/deployments/97-atlas.json', {'sourceChainId': 56, 'feeds': feeds})
 
     def smoke(self):
         m=self.manifest()
@@ -237,7 +285,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('action',choices=['deploy-dry-run','deploy','confirm','relay','smoke'])
     p.add_argument('--resume',action='store_true')
-    args=p.parse_args(); t=Testnet()
+    args=p.parse_args(); t=Testnet(roles=('REPORTER',) if args.action == 'relay' else None)
     if args.action.startswith('deploy'): t.deploy(args.action=='deploy',args.resume)
     elif args.action=='confirm': t.confirm_deployment()
     elif args.action=='relay': t.relay()

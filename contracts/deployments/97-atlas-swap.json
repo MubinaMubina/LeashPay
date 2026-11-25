@@ -1,0 +1,28 @@
+{
+  "chainId": 97,
+  "vault": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+  "agent": "0xbb74182dE67BE79076CDEd21be54b084B81797A0",
+  "transactionHash": "0x3a0dd0b84af9105c542db87e6838dd4b5909c444eaca205d6eda217ac6d4f8c8",
+  "block": 144819551,
+  "effectiveGasPrice": "0",
+  "tokenIn": "0x0081297D056308340E5501B5F2f076344A46aB44",
+  "tokenOut": "0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421",
+  "priceIn": "998679004338642663",
+  "priceInUpdatedAt": 1795595760,
+  "priceOut": "999838223910062279",
+  "priceOutUpdatedAt": 1795591921,
+  "maxSlippageBps": 200,
+  "amountIn": "1000000000000000000",
+  "amountOut": "1000000000000000000",
+  "minAmountOut": "978863781006942765",
+  "vaultBalanceDeltas": [
+    "-1000000000000000000",
+    "1000000000000000000"
+  ],
+  "badQuoteSimulation": {
+    "method": "eth_simulateV1",
+    "quotedOut": "900000000000000000",
+    "error": "SlippageTooHigh",
+    "revertData": "0x76baadda0000000000000000000000000000000000000000000000000d959f6c2e6a222d0000000000000000000000000000000000000000000000000c7d713b49da0000"
+  }
+}

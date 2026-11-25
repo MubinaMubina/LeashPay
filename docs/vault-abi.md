@@ -264,7 +264,7 @@ function latestRoundData() external view
 | Network | Feed | Notes |
 |---|---|---|
 | BSC mainnet | Atlas SingleFeed proxy per pair ([Atlas push-mode docs](https://docs.atlasoracle.io/developers/atlas-oracle/integrate-the-push-mode)) | Atlas can restrict reads to approved contracts. The vault address would need approval. |
-| BSC testnet | `AtlasRelayFeed` (Builder A) | Atlas lists no testnet feeds, so a reporter reads the **mainnet** Atlas answer and `updatedAt` and writes them to the relay. |
+| BSC testnet | `AtlasRelayFeed` (Builder A) | For both stablecoins, the reporter reads the **mainnet** Atlas answer and `updatedAt` and writes them to the relay. |
 
 Rules every consumer follows:
 

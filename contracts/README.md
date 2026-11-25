@@ -61,7 +61,7 @@ operational dependencies:
 
 ```sh
 python3 -m venv .setup/testnet-venv
-.setup/testnet-venv/bin/pip install -r requirements-testnet.txt
+.setup/testnet-venv/bin/pip install -r scripts/requirements-testnet.txt
 .setup/testnet-venv/bin/python scripts/check-testnet.py --nodereal # read-only historical proof checks
 .setup/testnet-venv/bin/python scripts/testnet.py relay # reporter transactions
 ```
@@ -71,9 +71,8 @@ python3 -m venv .setup/testnet-venv
 the mainnet source RPC permits reads only. The existing deployment must not be
 repeated. Deployment writes Foundry journals, and the smoke test journals signed
 transaction hashes before submission. Keep these ignored local files: a retry
-checks the same receipt and never silently creates another payment. A signed
-transaction without a receipt requires checking its hash and account nonce before
-any recovery; do not delete the journal to retry.
+checks the same receipt and never silently creates another payment. For new journal entries, recovery can resubmit the identical signed transaction.
+Keep the journal when investigating an unconfirmed hash.
 
 The public RPC prunes historical account state. `check-testnet.py --nodereal`
 uses the server-side NodeReal key with its
@@ -93,7 +92,18 @@ Both relays preserve the timestamps of real Atlas mainnet observations. The free
 push feeds advertise a 24-hour heartbeat, so this deployment uses a 25-hour
 `maxPriceAge`. These prices are not instantaneous depeg signals. The latest
 mirrored observations are recorded in [97-atlas.json](deployments/97-atlas.json).
-The relay command is a manual refresh; no continuous worker is running yet.
+Run the local reporter from the repository root for the hackathon:
+
+```sh
+.setup/testnet-venv/bin/python scripts/atlas_worker.py --interval 300 --until 2026-11-27T02:00:00+07:00
+```
+
+The worker checks each feed every five minutes while the Mac is awake and online.
+It signs a testnet update only for a newer observation. An unavailable feed is
+reported individually and retried within a minute. A local file lock prevents a
+second worker from starting. Inspect `.setup/atlas-worker-status.json` for the PID,
+last check, errors and source timestamps. Stop it with Ctrl-C in the foreground
+or send SIGTERM to its recorded PID. Restart with the same command after a reboot.
 If observations expire or fall below the owner's floor, payments fail closed.
 
 The mock DEX starts with 100,000 units of each faucet token. The demo vault was
@@ -101,3 +111,19 @@ funded with 1,000 mock USDT; its owner, agent and reporter are separate test
 wallets. Mock tokens, simulated T-bill returns and the permissive faucet are for
 the hackathon testnet only. MegaFuel's private policy has its own funding, limits
 and expiration; sponsorship eligibility is checked again before each new send.
+
+## Swap proof
+
+One sponsored testnet transaction swapped 1 mUSDT for 1 mUSDC at the demo DEX.
+The vault's minimum was 0.978863781006942765 mUSDC. At the same block, a read-only
+simulation set a quote of 0.90 mUSDC and the vault returned `SlippageTooHigh`
+with the expected minimum and actual amounts. The simulated rate was discarded.
+[Receipt](https://testnet.bscscan.com/tx/0x3a0dd0b84af9105c542db87e6838dd4b5909c444eaca205d6eda217ac6d4f8c8) ·
+[Machine-readable proof](deployments/97-atlas-swap.json)
+
+Replay the proof from the repository root with
+`.setup/testnet-venv/bin/python scripts/check_atlas_swap.py`. It checks the receipt,
+the vault's balance changes, both oracle prices, and the simulated refusal at the
+recorded block. The replay uses `BSC_TESTNET_RPC_URL` and optionally `NODEREAL_API_KEY`
+for historical state and requires no signing key. The RPC used for historical
+reads must support `eth_simulateV1` and retain state at that block.

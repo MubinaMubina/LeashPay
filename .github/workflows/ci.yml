@@ -28,6 +28,14 @@ jobs:
         if: hashFiles('web/package.json') != ''
       - run: npm run build --if-present
         if: hashFiles('web/package.json') != ''
+  atlas-relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: python -m pip install -r scripts/requirements-testnet.txt
+      - run: python -m unittest discover -s scripts -p test_atlas_relay.py
   contracts:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: contracts } }

@@ -61,7 +61,7 @@ Swaps are checked against a fair price. If the agent passed that price in, a hac
 The feed is [Atlas](https://docs.atlasoracle.io/developers/atlas-oracle/integrate-the-push-mode), the oracle backed by CoinMarketCap on BNB Chain. Three facts about Atlas shaped the design:
 
 - Its feeds use the same `latestRoundData()` call as Chainlink, so the vault talks to it through a two-function interface, [`IPriceFeed`](../contracts/src/interfaces/IPriceFeed.sol).
-- Atlas lists **no BSC testnet feeds**. On testnet, a small relay contract holds a copy of the **real mainnet** Atlas price and its timestamp, written by a separate reporter key. Moving to mainnet means changing one address per coin, not changing code.
+- For the deployed USDT/USDC pair on BSC testnet, a small relay contract holds a copy of the **real mainnet** Atlas price and its timestamp, written by a separate reporter key. Moving to mainnet means changing one address per coin, not changing code.
 - Its `roundId` field is always `1`, so the vault ignores it and checks only that the price is positive and recent.
 
 *Trade-off:* the relay is one more contract plus a small reporter process to keep running. If it stops, prices go stale and price-dependent actions refuse with a clear `StalePrice` error instead of guessing.

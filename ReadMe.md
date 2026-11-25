@@ -70,7 +70,7 @@ The agent's key can never withdraw, change a rule or unpause. The owner can fire
 | Track | How LeashPay uses it | Status |
 |---|---|---|
 | **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BNB Chain (BSC testnet); the AI agent acts on-chain through it; idle funds use a mock tokenized T-bill | Vault, factory and testnet dependencies deployed; 56 Foundry tests pass. One agent-key payment sponsored by MegaFuel confirmed. LLM integration pending. |
-| **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Both testnet relays mirror real Atlas mainnet observations, preserving source timestamps. Manual refresh implemented; continuous worker and CoinMarketCap calls pending. |
+| **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Both testnet relays mirror real Atlas mainnet observations, preserving source timestamps. Local polling worker implemented. [Sponsored swap and simulated slippage refusal](contracts/deployments/97-atlas-swap.json) verified. CoinMarketCap integration pending. |
 | **Cournot** | The depeg guard: a live probability from Cournot decides which stablecoin each payout uses; the dashboard shows the claim, probability and sources; each on-chain payment carries a `ref` linking to that evidence | Payment `ref` in the frozen interface. Cournot calls not built yet. |
 | **ChatAndBuild Living Brain** | The agent's long-term memory: recipients, their preferences, payout history and past attack attempts, recalled before every plan | Not built yet. |
 
@@ -88,7 +88,7 @@ These statuses are updated as each part lands.
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
-Still to come, per the roadmap: the continuous Atlas relay worker, the agent server
+Still to come, per the roadmap: the agent server
 (`agent/`), the dashboard and recipient page (`web/`), and the demo video. Source
 publication on BscScan awaits approval. Hosting will be reconfirmed at deployment;
 Vercel is the current preference, with Cloudflare still an option.
