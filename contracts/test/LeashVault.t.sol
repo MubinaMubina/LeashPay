@@ -510,6 +510,32 @@ contract LeashVaultTest is Test {
         assertEq(bill.balanceOf(OWNER), 100e18);
     }
 
+    function test_tbill_redeemUnlocksPaymentWhenAllUSDTIsInvested() public {
+        uint256 amount = 5e18;
+        vm.prank(OWNER);
+        vault.setRecipient(LINH, true, amount);
+        usdt.mint(address(vault), amount);
+
+        vm.prank(AGENT);
+        vault.sweepToTBill(amount);
+        expectPay(
+            abi.encodeWithSelector(IV.InsufficientBalance.selector, address(usdt), 0, amount),
+            LINH,
+            address(usdt),
+            amount,
+            REF
+        );
+        assertEq(vault.spentToday(), 0);
+
+        vm.prank(AGENT);
+        vault.redeemFromTBill(amount);
+        assertEq(bill.balanceOf(address(vault)), 0);
+        pay(LINH, address(usdt), amount, REF);
+        assertEq(usdt.balanceOf(address(vault)), 0);
+        assertEq(usdt.balanceOf(LINH), amount);
+        assertEq(vault.spentToday(), amount);
+    }
+
     function test_allTreasuryActionsAuthorizeThenPauseThenZero() public {
         bytes[] memory calls = new bytes[](3);
         calls[0] = abi.encodeCall(IV.swap, (address(usdt), address(usdc), 0));

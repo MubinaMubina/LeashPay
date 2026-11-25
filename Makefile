@@ -5,7 +5,7 @@ PY := $(VENV)/bin/python
 DEPS := $(VENV)/.requirements-installed
 FORGE ?= $(if $(wildcard .setup/foundry-bin/forge),.setup/foundry-bin/forge,forge)
 
-.PHONY: help setup start stop status logs test verify
+.PHONY: help setup start stop status logs test verify verify-tbill
 help:
 	@echo "make start   Run Atlas in this terminal (checks every 60s, Ctrl-C to stop)"
 	@echo "make stop    Gracefully stop the relay"
@@ -15,7 +15,8 @@ help:
 	@echo "make logs    Show the last 25 worker log lines"
 	@echo "make setup   Install Python dependencies and contract submodules"
 	@echo "make test    Run Foundry, the frozen ABI checks and Python tests"
-	@echo "make verify  Replay both recorded testnet proofs (read-only)"
+	@echo "make verify  Replay all recorded testnet proofs (read-only)"
+	@echo "make verify-tbill  Replay the T-bill deposit, withdrawal and payout (read-only)"
 
 $(PY):
 	$(PYTHON) -m venv "$(VENV)"
@@ -46,9 +47,12 @@ test: $(DEPS)
 	  IFaucetToken=contracts/out/MockToken.sol/MockToken.json
 	"$(PY)" -m unittest discover -s scripts -p 'test_*.py'
 
-verify: $(DEPS)
+verify: $(DEPS) verify-tbill
 	"$(PY)" scripts/check-testnet.py --nodereal
 	"$(PY)" scripts/check_atlas_swap.py
+
+verify-tbill: $(DEPS)
+	"$(PY)" scripts/check_tbill.py
 
 .PHONY: megafuel-status megafuel-extend
 megafuel-status: $(DEPS)

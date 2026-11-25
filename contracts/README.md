@@ -103,7 +103,7 @@ During sleep polling pauses; after wake the process resumes. After a reboot use
 signing keys are not required by the reporter.
 
 Use `make test` for local checks and `make verify` to replay the recorded
-payment and swap on BSC testnet. For a fresh checkout, run `make setup` and
+payment, swap and T-bill transactions on BSC testnet. For a fresh checkout, run `make setup` and
 provide Foundry as described above.
 
 If observations expire or fall below the owner's floor, payments fail closed.
@@ -131,3 +131,23 @@ the vault's balance changes, both oracle prices, and the simulated refusal at th
 recorded block. The replay uses `BSC_TESTNET_RPC_URL` and optionally `NODEREAL_API_KEY`
 for historical state and requires no signing key. The RPC used for historical
 reads must support `eth_simulateV1` and retain state at that block.
+
+## T-bill deposit, withdrawal and payment
+
+The demo agent placed 5 mUSDT from the vault into the mock ERC4626 T-bill, withdrew
+5 mUSDT back into the vault, then paid the allowlisted demo recipient. MegaFuel
+sponsored all three transactions on chain 97. The agent paid zero tBNB in gas.
+
+| Confirmed step | Liquid mUSDT in vault | T-bill shares in vault | Recipient mUSDT |
+|---|---:|---:|---:|
+| Before deposit | 998 | 0 | 1 |
+| [Deposit](https://testnet.bscscan.com/tx/0x36169f72200d39ad3e687e5fa0693e4dd79ee03bb9255bdf9a39cfc770b670de) | 993 | 5 | 1 |
+| [Withdraw](https://testnet.bscscan.com/tx/0xd5d6051a5bdb65a76b16f303b8bcc2d761624ffef7b6b58fe3f6a2cdf511c6f4) | 998 | 0 | 1 |
+| [Pay](https://testnet.bscscan.com/tx/0xbdd84fa076be1e36c900f1bea7c9a5cc99c420c773923fef80fe8c4165d2c63e) | 993 | 0 | 6 |
+
+Run `make verify-tbill` to check the transaction inputs, vault events, gas price and
+balances immediately before and after each block against the [recorded proof](deployments/97-tbill.json).
+The command only reads chain history and needs an archive RPC. It works after
+sponsorship expires and while the Atlas relay is stopped. A Foundry test also
+invests the vault's entire mUSDT balance and confirms that the same payment fails
+before withdrawal and succeeds afterward.
