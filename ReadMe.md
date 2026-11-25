@@ -154,8 +154,12 @@ approval, run the payment from the app. [Live terminal payment to Marco](https:/
 
 During the 26 November rehearsal, Privy issued a signed test session. Living
 Brain accepted reads and refused the new capture with HTTP 402 because the
-project's prepaid memory balance was insufficient. Once the project has memory
-credit, run `make test-brain` to verify the complete capture and search.
+project's prepaid memory balance was insufficient.
+
+- [ ] **Living Brain credits.** Ask the ChatAndBuild team at the hackathon booth
+  for memory credits for the LeashPay project when the booth opens in Bangkok.
+  Once credited, run `make test-brain` and check that it writes a new preference
+  and finds that same preference through search. Then tick this item.
 
 ## Documentation
 
