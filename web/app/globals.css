@@ -1,0 +1,157 @@
+/* The approved "calm payment desk" direction (design doc, D5): cool white panels,
+   ink text, BNB gold only for the brand mark, green for passes, red for refusals. */
+:root {
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --ink: #111827;
+  --ink-2: #4b5563;
+  --ink-3: #6b7280;
+  --line: #e5e7eb;
+  --gold: #f0b90b;
+  --gold-ink: #7a5b00;
+  --pass: #15803d;
+  --pass-bg: #ecfdf3;
+  --stop: #c62828;
+  --stop-bg: #fef2f2;
+  --radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: 15px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+a {
+  color: #1d4ed8;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+code {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.topbar {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--gold);
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.net {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #fff8db;
+  color: var(--gold-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.center {
+  display: grid;
+  place-items: center;
+  min-height: calc(100% - 60px);
+  padding: 24px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.intro {
+  max-width: 520px;
+}
+
+.intro h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.intro p {
+  color: var(--ink-2);
+  margin: 0 0 16px;
+}
+
+.btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+}
+
+.hint {
+  color: var(--ink-3);
+}
+
+.setup-error {
+  max-width: 560px;
+  margin: 80px auto;
+  padding: 0 24px;
+}
