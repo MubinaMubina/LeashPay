@@ -1,17 +1,16 @@
 "use client";
 
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy } from "@privy-io/react-auth";
+import { useState } from "react";
+import type { Address } from "viem";
+import { Onboarding } from "@/components/Onboarding";
 import { explorerAddress, shortAddress } from "@/lib/chain";
-
-/** The owner's Privy embedded wallet: the only wallet that counts as the vault owner. */
-function useOwnerWallet() {
-  const { wallets } = useWallets();
-  return wallets.find((wallet) => wallet.walletClientType === "privy");
-}
+import { useOwnerWallet } from "@/lib/client";
 
 export default function Home() {
   const { ready, authenticated, login, logout, user } = usePrivy();
   const owner = useOwnerWallet();
+  const [vault, setVault] = useState<Address | null>(null);
 
   return (
     <>
@@ -54,11 +53,17 @@ export default function Home() {
           </section>
         ) : !owner ? (
           <p className="hint">Creating your wallet…</p>
+        ) : !vault ? (
+          <Onboarding owner={owner.address as Address} onReady={setVault} />
         ) : (
           <section className="card intro">
-            <h1>Signed in</h1>
+            <h1>Your vault is ready</h1>
             <p>
-              Your wallet <code>{owner.address}</code> is the owner of your LeashPay vault on BSC testnet.
+              Vault{" "}
+              <a href={explorerAddress(vault)} target="_blank" rel="noreferrer">
+                {shortAddress(vault)}
+              </a>{" "}
+              holds test USDT and USDC, and Linh, Marco and Mai are allowed. The chat with the agent comes next.
             </p>
           </section>
         )}
