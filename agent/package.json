@@ -12,7 +12,8 @@
     "test": "vitest run",
     "abi": "node scripts/gen-abi.mjs",
     "abi:check": "node scripts/gen-abi.mjs --check",
-    "key": "node scripts/new-agent-key.mjs"
+    "key": "node scripts/new-agent-key.mjs",
+    "check:demo": "tsx scripts/check-demo-messages.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",

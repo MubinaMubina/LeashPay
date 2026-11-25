@@ -160,6 +160,7 @@ Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can ru
 npm test          # 182 tests; no API key, chain or network needed
 npm run build     # type-check
 npm run abi:check # the generated ABI matches the Solidity interfaces
+npm run check:demo # the two demo messages give the plans the demo needs, 3 runs each against the real Claude (about 6 calls; needs the Claude key)
 ```
 
 The tests cover:
