@@ -20,7 +20,13 @@ function rememberPlan(id: string) {
   window.history.replaceState(null, "", url);
 }
 
-export function Chat({ onSettled, onAgentDown }: { onSettled: () => void; onAgentDown: () => void }) {
+export function Chat({
+  onSettled,
+  onAgentDown,
+}: {
+  onSettled: (outcome?: { attackRefused?: boolean }) => void;
+  onAgentDown: () => void;
+}) {
   const api = useApi();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [text, setText] = useState("");

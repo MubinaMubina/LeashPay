@@ -202,8 +202,56 @@ code {
 .vault-col {
   background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 22px 22px 28px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.vault-scroll {
+  flex: 1;
   overflow: auto;
+  padding: 22px 22px 12px;
+}
+.kill-area {
+  padding: 14px 22px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.kill {
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px;
+  border-radius: 10px;
+  border: 2px solid var(--stop);
+  background: var(--panel);
+  color: var(--stop);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.kill.on {
+  background: var(--stop);
+  color: #fff;
+}
+.kill[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+.kill-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--stop);
+}
+.balance {
+  transition: color 0.3s ease;
+}
+.balance.flash {
+  color: var(--pass);
+}
+.unchanged {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stop);
 }
 .label {
   margin: 22px 0 8px;

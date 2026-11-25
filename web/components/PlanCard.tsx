@@ -43,7 +43,8 @@ export function PlanCard({
 }: {
   plan: PlanJson;
   initialEvents: JournalEventJson[];
-  onSettled: () => void;
+  /** Called when a run or the demo attack ends; `attackRefused` lets the vault column show "unchanged". */
+  onSettled: (outcome?: { attackRefused?: boolean }) => void;
   onAgentDown: () => void;
 }) {
   const api = useApi();
@@ -109,7 +110,7 @@ export function PlanCard({
     await refreshEvents();
     if (sent.ok && sent.body.results[0]) {
       setAttack({ stage: "done", result: sent.body.results[0] });
-      onSettled();
+      onSettled({ attackRefused: sent.body.results[0].status === "reverted" });
     } else {
       if (sent.status === 502 && sent.body.error === "agent unreachable") onAgentDown();
       setAttack({ stage: "failed", error: sent.body.error ?? `The agent answered ${sent.status}.` });
