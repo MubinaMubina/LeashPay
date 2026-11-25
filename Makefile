@@ -5,7 +5,7 @@ PY := $(VENV)/bin/python
 DEPS := $(VENV)/.requirements-installed
 FORGE ?= $(if $(wildcard .setup/foundry-bin/forge),.setup/foundry-bin/forge,forge)
 
-.PHONY: help setup start stop status logs test verify verify-tbill verify-sources
+.PHONY: help setup start stop status logs test verify verify-tbill verify-sources seed-demo
 help:
 	@echo "make start   Run Atlas in this terminal (checks every 60s, Ctrl-C to stop)"
 	@echo "make stop    Gracefully stop the relay"
@@ -18,6 +18,7 @@ help:
 	@echo "make verify  Replay payment, swap and T-bill transactions (read-only)"
 	@echo "make verify-tbill  Replay the T-bill deposit, withdrawal and payout (read-only)"
 	@echo "make verify-sources  Check the eight published BscScan sources (read-only)"
+	@echo "make seed-demo  Prepare the three BSC testnet payees and simulate the payroll"
 
 $(PY):
 	$(PYTHON) -m venv "$(VENV)"
@@ -54,6 +55,9 @@ verify: $(DEPS) verify-tbill
 
 verify-tbill: $(DEPS)
 	"$(PY)" scripts/check_tbill.py
+
+seed-demo: $(DEPS)
+	"$(PY)" scripts/seed_demo.py
 
 verify-sources: $(DEPS)
 	"$(FORGE)" build --quiet --root contracts

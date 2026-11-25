@@ -1,0 +1,29 @@
+{
+  "chainId": 97,
+  "vault": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+  "token": "0x0081297D056308340E5501B5F2f076344A46aB44",
+  "paymentPerRecipientTokens": 1,
+  "recipients": [
+    {
+      "name": "Linh",
+      "address": "0x47D948f58f4a495283BF0F74257E2F73D446D7Ea",
+      "country": "VN",
+      "currency": "VND",
+      "monthlyCapTokens": 1000
+    },
+    {
+      "name": "Marco",
+      "address": "0xEBe6E66c61DC57185F2c9a63bbc9914B85A4b13B",
+      "country": "PH",
+      "currency": "PHP",
+      "monthlyCapTokens": 10
+    },
+    {
+      "name": "Mai",
+      "address": "0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21",
+      "country": "VN",
+      "currency": "VND",
+      "monthlyCapTokens": 10
+    }
+  ]
+}

@@ -109,6 +109,12 @@ Vercel is the current preference, with Cloudflare still an option.
 
 ## Run locally
 
+From the repository root, run `make seed-demo` to prepare the three testnet
+payees for “Pay my 3 freelancers”. The command checks the existing vault and
+simulates a 1 mUSDT payment to each payee. Builder B can use the names,
+addresses and local currencies from the [public demo roster](contracts/deployments/97-demo-recipients.json).
+See [demo setup and retries](contracts/README.md#prepare-the-three-demo-payees).
+
 From the repository root, `make start` runs the Atlas relay in the current
 terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
 stop it, or use `make stop` from another terminal. Use `make status` to check

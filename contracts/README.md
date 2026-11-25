@@ -80,6 +80,40 @@ uses the server-side NodeReal key with its
 to reread balances at the payment block, as well as validate the receipt and
 simulate both refusals. This command sends no transactions.
 
+### Prepare the three demo payees
+
+From the repository root, run `make seed-demo`. It uses the existing demo
+vault on BSC testnet (97). The [demo roster](deployments/97-demo-recipients.json)
+contains three fictional profiles for the Bangkok agency. Linh uses the
+controlled address from the original smoke payment. Marco and Mai use separate
+test wallets. Builder B can load the public roster for display and planning.
+Only each address, its permission and its cap are written to the vault.
+
+| Profile | Country | Display currency | Monthly cap in stablecoin units |
+|---|---|---|---:|
+| Linh | Vietnam | VND | 1,000 (existing) |
+| Marco | Philippines | PHP | 10 |
+| Mai | Vietnam | VND | 10 |
+
+The demo payroll is 1 mUSDT per person. The seed checks the combined liquid
+balance and daily budget, each monthly allowance, and the deployed owner
+and agent. It registers missing payees with the owner's testnet key, then
+simulates the three payments as the agent using `eth_call`. This checks the
+current token, cooldown and price rules. Actual payouts are a separate action.
+
+Set `BSC_TESTNET_RPC_URL` in the root `.env`. Adding a payee or recovering a
+pending setup transaction also requires `DEPLOYER_PRIVATE_KEY` and gas in tBNB.
+An already configured vault can be checked using the RPC alone. If interrupted,
+rerun the same command with the existing local transaction journal. Matching
+permissions are skipped. Conflicting existing caps are reported for owner review.
+If a payment simulation reports a stale price, refresh the Atlas relay and rerun.
+
+On 26 November 2026, the first run registered [Marco](https://testnet.bscscan.com/tx/0x47756bdc5e6fc36bc647afc7b5798488c0116074bf20e6eb952aaadf4efbaec2)
+and [Mai](https://testnet.bscscan.com/tx/0xed9c35052970f1e054b297907a3fc22ecff6cdb89089e45cde14613ab9f3e7e2).
+The second run sent zero transactions. Across its verification window, the
+owner nonce stayed at 17, the agent nonce stayed at 5, the vault held 993 mUSDT
+and all three payee records and balances matched. [Two-run testnet evidence](deployments/97-demo-seed-proof.json)
+
 ### Contract sources on BscScan
 
 BscScan reports **Exact Match** for seven addresses, including the vault and
