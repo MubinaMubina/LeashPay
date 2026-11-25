@@ -38,7 +38,11 @@ export default function Home() {
         )}
       </header>
 
-      <main className="center" hidden={Boolean(authenticated && owner && vault)}>
+      {/* Once the vault is ready the dashboard replaces the centered area entirely. */}
+      {authenticated && owner && vault ? (
+        <Dashboard vault={vault} />
+      ) : (
+      <main className="center">
         {!ready ? (
           <p className="hint">Loading…</p>
         ) : !authenticated ? (
@@ -54,11 +58,11 @@ export default function Home() {
           </section>
         ) : !owner ? (
           <p className="hint">Creating your wallet…</p>
-        ) : !vault ? (
+        ) : (
           <Onboarding owner={owner.address as Address} onReady={setVault} />
-        ) : null}
+        )}
       </main>
-      {authenticated && owner && vault && <Dashboard vault={vault} />}
+      )}
     </>
   );
 }

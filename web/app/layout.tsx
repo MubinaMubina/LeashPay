@@ -11,7 +11,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      {/* Browser extensions (e.g. ColorZilla) add attributes to <body>; don't treat that as a hydration error. */}
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>
