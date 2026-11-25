@@ -69,8 +69,8 @@ The agent's key can never withdraw, change a rule or unpause. The owner can fire
 
 | Track | How LeashPay uses it | Status |
 |---|---|---|
-| **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BNB Chain (BSC testnet); the AI agent acts on-chain through it; idle funds earn yield in a tokenized T-bill | Vault, factory and T-bill interfaces frozen in this repo. Contracts not deployed yet. |
-| **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Atlas price-feed interface frozen in this repo. CoinMarketCap calls not built yet. |
+| **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BNB Chain (BSC testnet); the AI agent acts on-chain through it; idle funds use a mock tokenized T-bill | Vault, factory and testnet dependencies deployed; 56 Foundry tests pass. One agent-key payment sponsored by MegaFuel confirmed. LLM integration pending. |
+| **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Both testnet relays mirror real Atlas mainnet observations, preserving source timestamps. Manual refresh implemented; continuous worker and CoinMarketCap calls pending. |
 | **Cournot** | The depeg guard: a live probability from Cournot decides which stablecoin each payout uses; the dashboard shows the claim, probability and sources; each on-chain payment carries a `ref` linking to that evidence | Payment `ref` in the frozen interface. Cournot calls not built yet. |
 | **ChatAndBuild Living Brain** | The agent's long-term memory: recipients, their preferences, payout history and past attack attempts, recalled before every plan | Not built yet. |
 
@@ -81,19 +81,24 @@ These statuses are updated as each part lands.
 | Path | What it is |
 |---|---|
 | [`contracts/src/interfaces/`](contracts/src/interfaces/) | The vault's frozen interface: `ILeashVault`, `ILeashVaultFactory`, `IPriceFeed`, `IFaucetToken` |
+| [`contracts/`](contracts/) | Implemented vault/factory, testnet mocks, Atlas relay and 56 Foundry tests; [setup and limitations](contracts/README.md) |
+| [`contracts/deployments/`](contracts/deployments/) | Chain 97 addresses, Atlas observations and sponsored payment evidence |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
-Still to come, per the roadmap: the vault, factory, mock tokens and price relay with their Foundry tests (`contracts/`), the agent server (`agent/`), and the dashboard and recipient page (`web/`). Setup steps, deployed contract addresses and the demo video are added when they exist.
+Still to come, per the roadmap: the continuous Atlas relay worker, the agent server
+(`agent/`), the dashboard and recipient page (`web/`), and the demo video. Source
+publication on BscScan awaits approval. Hosting will be reconfirmed at deployment;
+Vercel is the current preference, with Cloudflare still an option.
 
 ## Roadmap
 
 | Gate | Time (Bangkok) | What must be true | Status |
 |---|---|---|---|
 | ABI frozen | Wed 25 Nov, 20:30 | Both builders agree on the vault interface | Done: approved and merged on 25 Nov |
-| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | Next |
+| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | On-chain path confirmed on 25 Nov with an agent-key smoke test; LLM integration pending |
 | Full demo works | Thu 26 Nov, 18:00 | All three demo moments, end to end; feature freeze | Upcoming |
 | Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded | Upcoming |
 | Submitted | Fri 27 Nov, 02:00 | Submitted on HackQuest to all four tracks | Upcoming |
