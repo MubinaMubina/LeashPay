@@ -3,6 +3,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useState } from "react";
 import type { Address } from "viem";
+import { Dashboard } from "@/components/Dashboard";
 import { Onboarding } from "@/components/Onboarding";
 import { explorerAddress, shortAddress } from "@/lib/chain";
 import { useOwnerWallet } from "@/lib/client";
@@ -37,7 +38,7 @@ export default function Home() {
         )}
       </header>
 
-      <main className="center">
+      <main className="center" hidden={Boolean(authenticated && owner && vault)}>
         {!ready ? (
           <p className="hint">Loading…</p>
         ) : !authenticated ? (
@@ -55,19 +56,9 @@ export default function Home() {
           <p className="hint">Creating your wallet…</p>
         ) : !vault ? (
           <Onboarding owner={owner.address as Address} onReady={setVault} />
-        ) : (
-          <section className="card intro">
-            <h1>Your vault is ready</h1>
-            <p>
-              Vault{" "}
-              <a href={explorerAddress(vault)} target="_blank" rel="noreferrer">
-                {shortAddress(vault)}
-              </a>{" "}
-              holds test USDT and USDC, and Linh, Marco and Mai are allowed. The chat with the agent comes next.
-            </p>
-          </section>
-        )}
+        ) : null}
       </main>
+      {authenticated && owner && vault && <Dashboard vault={vault} />}
     </>
   );
 }
