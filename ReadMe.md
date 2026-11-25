@@ -86,10 +86,11 @@ These statuses are updated as each part lands.
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
 | [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 182 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
+| [`web/`](web/) | The web app: Privy email login, vault setup, the owner's chat with the agent (plan, the vault's verdict on each payment, approve with the wallet, payments landing row by row), the kill switch, the live attack the vault refuses, and a recipient phone page. [Setup and design](web/README.md) |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
-Still to come, per the roadmap: the agent's CoinMarketCap, Cournot and Living Brain integrations; the dashboard and recipient page (`web/`); and the demo video. Source
+Still to come, per the roadmap: the agent's CoinMarketCap, Cournot and Living Brain integrations, and the demo video. Source
 publication on BscScan awaits approval. Hosting will be reconfirmed at deployment;
 Vercel is the current preference, with Cloudflare still an option. To run the agent today, see [agent/README.md](agent/README.md).
 
@@ -112,6 +113,8 @@ terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
 stop it, or use `make stop` from another terminal. Use `make status` to check
 whether it is running and `make logs` to see recent activity. After reboot,
 start it manually for the demo. `make help` lists setup and test commands.
+
+The web app needs the agent running: `npm start` in `agent/`, then `npm run dev` in `web/`, and open http://localhost:3000. See [web/README.md](web/README.md).
 
 ## Documentation
 
