@@ -2,6 +2,7 @@
 """Mirror the Atlas feeds on BSC testnet until a manual stop."""
 import argparse
 import fcntl
+import logging
 import os
 import signal
 import time
@@ -19,14 +20,18 @@ def main():
         parser.error('Use a polling interval of at least 10 seconds')
 
     stop = Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda *_: stop.set())
     LOCAL.mkdir(parents=True, exist_ok=True)
     with (LOCAL / 'atlas-worker.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise SystemExit('An Atlas worker is already running here')
+            print('Atlas already running. Use make status to see the active instance.', flush=True)
+            return
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s',
+                            handlers=[logging.StreamHandler(), logging.FileHandler(LOCAL / 'atlas-worker.log')])
+        logging.info('Atlas running in this terminal. Press Ctrl-C or use make stop from another terminal.')
         instance = uuid.uuid4().hex
         stop_file = LOCAL / ('atlas-stop-' + instance)
         status_path = LOCAL / 'atlas-worker-status.json'
@@ -50,7 +55,7 @@ def main():
                 status.update(feeds=feeds, errors=errors, state='degraded' if errors else 'healthy',
                               checkedAt=int(time.time()), cycles=status['cycles'] + 1)
                 save(status_path, status)
-                print(f"Atlas cycle {status['cycles']}: {status['state']}, verified {', '.join(feeds)}", flush=True)
+                logging.info("Atlas cycle %d: %s, verified %s", status['cycles'], status['state'], ', '.join(feeds))
                 next_poll = started + args.interval
                 while not stop.is_set() and not stop_file.exists():
                     remaining = next_poll - time.monotonic()
@@ -61,6 +66,7 @@ def main():
             status.update(state='stopped', stoppedAt=int(time.time()))
             save(status_path, status)
             stop_file.unlink(missing_ok=True)
+            logging.info('Atlas stopped.')
 
 
 if __name__ == '__main__':

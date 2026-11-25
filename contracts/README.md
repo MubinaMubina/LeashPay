@@ -92,8 +92,9 @@ Both relays preserve the timestamps of real Atlas mainnet observations. The free
 push feeds advertise a 24-hour heartbeat, so this deployment uses a 25-hour
 `maxPriceAge`. These prices are not instantaneous depeg signals. The latest
 mirrored observations are recorded in [97-atlas.json](deployments/97-atlas.json).
-From the repository root, use `make start` to run the local reporter in the
-background. It checks both feeds every 60 seconds while the Mac is awake and
+From the repository root, `make start` runs the reporter in your current
+terminal and displays each check. Press Ctrl-C to stop, or use `make stop`
+from another terminal. It checks both feeds every 60 seconds while the Mac is awake and
 online, and writes an update only for a newer valid observation. There is no
 scheduled shutdown. `make status` shows the process state and last completed check.
 `make logs` shows recent activity. `make stop` lets the current operation finish.

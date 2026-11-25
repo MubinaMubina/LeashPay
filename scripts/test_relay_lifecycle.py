@@ -45,46 +45,61 @@ class WorkerLifecycleTest(unittest.TestCase):
         for file in ('atlas_worker.py', 'relayctl.py'):
             shutil.copy2(SCRIPTS / file, scripts / file)
         (scripts / 'testnet.py').write_text(FAKE_NETWORK)
-        self.controller = [sys.executable, str(scripts / 'relayctl.py')]
+        shutil.copy2(SCRIPTS.parent / 'Makefile', self.root / 'Makefile')
+        (scripts / 'requirements-testnet.txt').touch()
+        (self.local / 'testnet-venv/.requirements-installed').touch()
         self.addCleanup(self.control, 'stop')
 
     def control(self, action):
-        return subprocess.check_output(self.controller + [action], text=True, timeout=22)
+        return subprocess.check_output(['make', action], cwd=self.root, text=True, timeout=8)
 
-    def status(self):
-        return json.loads((self.local / 'atlas-worker-status.json').read_text())
-
-    def wait_state(self, expected):
+    def start(self, expected='healthy'):
+        path = self.local / 'atlas-worker-status.json'
+        previous = json.loads(path.read_text())['instance'] if path.exists() else None
+        proc = subprocess.Popen(['make', 'start'], cwd=self.root, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        # addCleanup is LIFO: request stop, then collect the foreground command.
+        self.addCleanup(proc.communicate, timeout=8)
+        self.addCleanup(self.control, 'stop')
         end = time.monotonic() + 5
-        while time.monotonic() < end:
-            if self.status()['state'] == expected:
-                return self.status()
+        while time.monotonic() < end and proc.poll() is None:
+            data = json.loads(path.read_text()) if path.exists() else {}
+            if data.get('state') == expected and data['instance'] != previous:
+                return proc, data
             time.sleep(0.05)
-        self.fail(f'Worker never reached {expected}')
+        self.fail(f'make start should stay attached and reach {expected}')
 
     def test_double_start_manual_stop_and_restart(self):
-        self.control('start')
-        first = self.wait_state('healthy')
+        proc, first = self.start()
         self.assertEqual(first['intervalSeconds'], 60)
         self.assertNotIn('stopAt', first)
-        self.control('start')
-        self.assertEqual(self.status()['instance'], first['instance'])
+        self.assertIn('running', self.control('start'))
+        self.assertIn(str(first['pid']), self.control('status'))
         self.control('stop')
-        self.assertIn('stopped', self.control('status'))
+        output, _ = proc.communicate(timeout=5)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn('healthy, verified USDT, USDC', output)
+        self.assertIn('Atlas stopped.', output)
+        self.assertIn('healthy, verified USDT, USDC', self.control('logs'))
         self.assertIn('already stopped', self.control('stop'))
-        self.control('start')
-        self.assertNotEqual(self.wait_state('healthy')['instance'], first['instance'])
+        _, second = self.start()
+        self.assertNotEqual(second['instance'], first['instance'])
+
+    def test_keyboard_interrupt_and_terminal_hangup_stop_worker(self):
+        for sig in (signal.SIGINT, signal.SIGHUP):
+            with self.subTest(sig=sig):
+                proc, status = self.start()
+                os.kill(status['pid'], sig)
+                self.assertEqual(proc.wait(timeout=5), 0)
+                self.assertIn('stopped', self.control('status'))
 
     def test_restart_after_abrupt_exit_ignores_stale_state_and_stop(self):
         (self.local / 'offline').touch()
-        self.control('start')
-        old = self.wait_state('degraded')
+        proc, old = self.start('degraded')
         os.kill(old['pid'], signal.SIGKILL)  # This temporary worker simulates power loss.
-        end = time.monotonic() + 5
-        while 'stopped' not in self.control('status') and time.monotonic() < end:
-            time.sleep(.05)
+        self.assertNotEqual(proc.wait(timeout=5), 0)
         self.assertIn('stopped', self.control('status'))
         (self.local / ('atlas-stop-' + old['instance'])).touch()
         (self.local / 'offline').unlink()
-        self.control('start')
-        self.assertNotEqual(self.wait_state('healthy')['instance'], old['instance'])
+        _, current = self.start()
+        self.assertNotEqual(current['instance'], old['instance'])

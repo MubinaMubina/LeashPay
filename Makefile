@@ -7,7 +7,7 @@ FORGE ?= $(if $(wildcard .setup/foundry-bin/forge),.setup/foundry-bin/forge,forg
 
 .PHONY: help setup start stop status logs test verify
 help:
-	@echo "make start   Start the local Atlas relay (60s polling)"
+	@echo "make start   Run Atlas in this terminal (checks every 60s, Ctrl-C to stop)"
 	@echo "make stop    Gracefully stop the relay"
 	@echo "make status  Show worker state and last completed check"
 	@echo "make logs    Show the last 25 worker log lines"
@@ -26,7 +26,7 @@ setup: $(DEPS)
 	git submodule update --init --recursive
 
 start: $(DEPS)
-	@$(PYTHON) scripts/relayctl.py start
+	@exec "$(PYTHON)" scripts/relayctl.py start
 
 stop status:
 	@$(PYTHON) scripts/relayctl.py $@

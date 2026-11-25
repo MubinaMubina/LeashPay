@@ -4,7 +4,7 @@ import argparse
 import fcntl
 import json
 import re
-import subprocess
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -53,17 +53,8 @@ def start():
         print(describe())
         return
     python = LOCAL / 'testnet-venv/bin/python'
-    with (LOCAL / 'atlas-worker.log').open('ab') as log:
-        process = subprocess.Popen([str(python), str(ROOT / 'scripts/atlas_worker.py')], cwd=ROOT,
-                                   stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    for _ in range(100):
-        if process.poll() is not None:
-            raise RuntimeError('Atlas exited during startup. See make logs.')
-        if snapshot().get('pid') == process.pid and running():
-            print(describe())
-            return
-        time.sleep(0.1)
-    raise RuntimeError('Startup has not been confirmed. Check make status and make logs.')
+    # Replace the controller so the terminal, output and signals stay attached.
+    os.execv(python, [str(python), str(ROOT / 'scripts/atlas_worker.py')])
 
 
 def stop():
@@ -91,12 +82,12 @@ def main():
     if action == 'status':
         print(describe())
         return
+    if action == 'start':
+        start()
+        return
     with (LOCAL / 'atlas-control.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if action == 'start':
-            start()
-        else:
-            stop()
+        stop()
 
 
 if __name__ == '__main__':

@@ -105,10 +105,11 @@ Vercel is the current preference, with Cloudflare still an option.
 
 ## Run locally
 
-The Atlas relay is the runnable background service on these Builder A branches.
-From the repository root, use `make start`, `make status`, `make logs` and
-`make stop`. It checks USDT and USDC every minute while the Mac is awake.
-After a reboot, run `make start` again. `make help` lists setup and test commands.
+From the repository root, `make start` runs the Atlas relay in the current
+terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
+stop it, or use `make stop` from another terminal. Use `make status` to check
+whether it is running and `make logs` to see recent activity. After reboot,
+start it manually for the demo. `make help` lists setup and test commands.
 
 ## Documentation
 
