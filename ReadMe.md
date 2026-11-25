@@ -103,6 +103,8 @@ Vercel is the current preference, with Cloudflare still an option.
 | Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded | Upcoming |
 | Submitted | Fri 27 Nov, 09:00 | Submitted on HackQuest to all four tracks | Upcoming |
 
+**Jury demo:** MegaFuel sponsorship ends **Friday 27 November 2026 at 09:00 Bangkok time** (02:00 UTC). Run `make megafuel-status` before presenting. [Extend the demo window or top up testnet gas](docs/megafuel-jury.md).
+
 ## Run locally
 
 From the repository root, `make start` runs the Atlas relay in the current

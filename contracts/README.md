@@ -113,6 +113,8 @@ funded with 1,000 mock USDT; its owner, agent and reporter are separate test
 wallets. Mock tokens, simulated T-bill returns and the permissive faucet are for
 the hackathon testnet only. MegaFuel's private policy has its own funding, limits
 and expiration; sponsorship eligibility is checked again before each new send.
+The policy ends on **27 November 2026 at 09:00 Bangkok time**.
+[Check, extend or top up MegaFuel for a jury demo](../docs/megafuel-jury.md).
 
 ## Swap proof
 
