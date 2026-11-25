@@ -575,3 +575,89 @@ code {
   width: 100%;
   margin-top: 18px;
 }
+
+/* Depeg guard (Cournot): Cournot's reading as returned; LeashPay's choice labeled as ours. */
+.depeg {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #f9fafb;
+  font-size: 14px;
+}
+.depeg.switch {
+  border-color: var(--gold);
+  background: #fffbeb;
+}
+.depeg.off {
+  color: var(--ink-2);
+}
+.depeg-head {
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.depeg-meta {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.claim {
+  margin: 8px 0;
+  font-style: italic;
+  color: var(--ink-2);
+}
+.risk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.risk {
+  font-size: 20px;
+  font-weight: 700;
+  min-width: 64px;
+}
+.risk-bar {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--line);
+}
+.risk-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--ink);
+}
+.risk-bar b {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 18px;
+  background: var(--stop);
+}
+.sources {
+  margin: 10px 0 6px;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.choice {
+  margin: 8px 0 0;
+}
+.ours {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.slider {
+  width: 100%;
+  accent-color: var(--ink);
+}

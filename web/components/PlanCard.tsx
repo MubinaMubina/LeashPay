@@ -4,6 +4,7 @@ import { useSignMessage } from "@privy-io/react-auth";
 import { useCallback, useEffect, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
 import { DEMO_ATTACK_ADDRESS } from "@/lib/demo";
+import { DepegBox } from "./DepegBox";
 import { RefusalCard, type AttackResultJson } from "./RefusalCard";
 import { errorText, useApi, useOwnerWallet } from "@/lib/client";
 import {
@@ -157,6 +158,8 @@ export function PlanCard({
           )}
         </div>
       ))}
+
+      {plan.depeg && <DepegBox depeg={plan.depeg} />}
 
       {plan.notes.length > 0 && (
         <ul className="notes">

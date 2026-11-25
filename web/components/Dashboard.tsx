@@ -20,6 +20,23 @@ interface VaultJson {
 
 type Switch = { kind: "idle" } | { kind: "sending" } | { kind: "failed"; error: string };
 
+const THRESHOLD_KEY = "leashpay.depegThreshold";
+const DEFAULT_THRESHOLD = 5;
+
+/** The owner's depeg limit, kept in this browser (it's the agent's policy, not a vault rule). */
+function useDepegThreshold(): [number, (value: number) => void] {
+  const [value, setValue] = useState(DEFAULT_THRESHOLD);
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem(THRESHOLD_KEY));
+    if (window.localStorage.getItem(THRESHOLD_KEY) !== null && Number.isFinite(saved) && saved >= 0 && saved <= 100) setValue(saved);
+  }, []);
+  const set = useCallback((next: number) => {
+    setValue(next);
+    window.localStorage.setItem(THRESHOLD_KEY, String(next));
+  }, []);
+  return [value, set];
+}
+
 /** How long the vault column shows a reaction (balance changed, or "unchanged" after an attack). */
 const REACTION_MS = 4_000;
 
@@ -37,6 +54,7 @@ export function Dashboard({ vault }: { vault: Address }) {
   const [killSwitch, setKillSwitch] = useState<Switch>({ kind: "idle" });
   const [reaction, setReaction] = useState<"changed" | "unchanged" | null>(null);
   const lastBalance = useRef<string | null>(null);
+  const [depegThreshold, setDepegThreshold] = useDepegThreshold();
   const clearReaction = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const react = useCallback((kind: "changed" | "unchanged") => {
@@ -125,6 +143,23 @@ export function Dashboard({ vault }: { vault: Address }) {
             <span>{info ? `$${formatAmount(info.rules.minTokenPrice, "").trim()}` : "…"}</span>
           </div>
 
+          <div className="label">Depeg guard · your limit</div>
+          <div className="kv">
+            <span>Switch away from USDC above</span>
+            <span>{depegThreshold}%</span>
+          </div>
+          <input
+            className="slider"
+            type="range"
+            min={0}
+            max={20}
+            step={0.5}
+            value={depegThreshold}
+            onChange={(e) => setDepegThreshold(Number(e.target.value))}
+            aria-label="Depeg limit in percent"
+          />
+          <div className="sub">Cournot's USDC depeg risk is checked before each plan. Applies to the next plan you send.</div>
+
           <div className="label">Recipients</div>
           {DEMO_RECIPIENTS.map((r) => (
             <div className="person" key={r.address}>
@@ -152,7 +187,7 @@ export function Dashboard({ vault }: { vault: Address }) {
       <div className="main-col">
         {agentDown && <div className="banner">The agent isn't running on this laptop. Start it with npm start in agent/.</div>}
         {paused && <div className="banner">Vault paused. The agent can't pay anyone until you unpause. You can still withdraw.</div>}
-        <Chat onSettled={onSettled} onAgentDown={() => setAgentDown(true)} />
+        <Chat onSettled={onSettled} onAgentDown={() => setAgentDown(true)} depegThreshold={depegThreshold} />
       </div>
     </div>
   );

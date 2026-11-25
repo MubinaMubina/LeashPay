@@ -17,6 +17,21 @@ export interface PaymentJson {
   preview?: VaultRevertJson | null;
 }
 
+export type DepegJson =
+  | {
+      available: true;
+      claim: string;
+      marketId: string;
+      marketTitle: string;
+      probability: number;
+      threshold: number;
+      chosenToken: "USDT" | "USDC";
+      sources: { title: string; url?: string; time?: string }[];
+      fetchedAt: string;
+      requestId: string | null;
+    }
+  | { available: false; threshold: number; reason: string };
+
 export interface PlanJson {
   id: string;
   ref: string;
@@ -28,6 +43,8 @@ export interface PlanJson {
   payments: PaymentJson[];
   notes: string[];
   createdAt: string;
+  /** The depeg guard's decision (Cournot), when it ran. */
+  depeg?: DepegJson;
 }
 
 export type JournalEventJson =

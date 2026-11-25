@@ -23,9 +23,12 @@ function rememberPlan(id: string) {
 export function Chat({
   onSettled,
   onAgentDown,
+  depegThreshold,
 }: {
   onSettled: (outcome?: { attackRefused?: boolean }) => void;
   onAgentDown: () => void;
+  /** The owner's depeg limit in percent, sent with every new plan. */
+  depegThreshold: number;
 }) {
   const api = useApi();
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -54,7 +57,7 @@ export function Chat({
       setText("");
       setEntries((list) => [...list, { kind: "owner", text: trimmed }]);
       setThinking(true);
-      const created = await api<PlanJson>("plans", { body: { message: trimmed } });
+      const created = await api<PlanJson>("plans", { body: { message: trimmed, depegThreshold } });
       setThinking(false);
       if (created.ok) {
         rememberPlan(created.body.id);
@@ -64,7 +67,7 @@ export function Chat({
         setEntries((list) => [...list, { kind: "error", text: created.body.error ?? `The agent answered ${created.status}.` }]);
       }
     },
-    [api, thinking, onAgentDown],
+    [api, thinking, onAgentDown, depegThreshold],
   );
 
   return (
