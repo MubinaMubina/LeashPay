@@ -1,25 +1,29 @@
 # Who can move the money?
 
-The agency funds a vault and chooses its rules. **The owner** controls those rules. **The agent** can submit payment requests. **The vault** decides whether each request is allowed when it runs on BSC. **Marco** only needs to give the agency a receiving address.
+Before payday, the **owner** puts test tokens in the vault, adds Marco’s address to the list of people the agency can pay, and sets spending limits. The **agent** is the software that prepares and submits payment requests. The agency’s money stays in the **vault** until its rules allow a transfer.
 
 ## Follow the instructions, then follow the token
 
-This is the agent-server flow. On the diagram, the dotted arrows carry instructions or approval. The solid arrow is the payment. The token contract records the change to the two balances.
+Read down from “Pay Marco 1 USDT.” **Steps 1–3 pass instructions. If the rules pass at step 4, the vault sends the tokens.** On the practice network, the token for this request is mUSDT.
 
 ```mermaid
 flowchart TD
-    Owner["Agency owner"]
-    Agent["LeashPay agent"]
-    Vault["Vault holding the agency's mUSDT"]
-    Marco["Marco's address"]
-    Owner -.->|"Sets spending rules"| Vault
-    Agent -.->|"Shows a proposed plan"| Owner
-    Owner -.->|"Signs the reviewed plan"| Agent
-    Agent -.->|"Signs and submits a payment request"| Vault
-    Vault -->|"1 mUSDT if all rules pass"| Marco
+    accTitle: How the agency pays Marco
+    accDescr: The agent prepares a payment plan. The owner signs the plan. The same agent signs a transaction asking the vault to pay. If the rules pass, the vault transfers one mUSDT to Marco.
+    Plan["1. Agent prepares a plan"]
+    Owner["2. Owner reviews and signs the plan"]
+    Agent["3. Agent signs a transaction"]
+    Vault["4. Vault checks its spending rules"]
+    Marco["Marco receives 1 mUSDT"]
+    Plan -.->|"Proposed payment"| Owner
+    Owner -.->|"Approved plan"| Agent
+    Agent -.->|"Request to pay Marco"| Vault
+    Vault -->|"If allowed, transfer 1 mUSDT"| Marco
 ```
 
-**Two signatures do two jobs.** In the agent server, the owner signs a message approving the particular plan. The server verifies it before the agent signs a blockchain transaction. On-chain, the vault checks the calling agent and enforces the spending rules. The sponsored terminal rehearsal uses the demo signer directly. The team separately demonstrated an owner-approved payment through the agent server. [Owner-approved payment](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc) · [Sponsored terminal payment](02-wallets-and-transactions.md)
+**Where can you see each signature?** At step 2 the owner approves the plan in their wallet. The LeashPay server checks that signed message. At step 3 the agent signs the transaction that goes to BSC. This is why BscScan lists the **agent** under **From**, even for a payment the owner approved in the app. [Payment made through the agent server](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)
+
+**Which steps does Marco’s annotated receipt show?** For the sponsored terminal rehearsal, start at **step 3**. The terminal used the demo agent’s key to send the request directly. The receipt shows the agent calling the vault and the vault paying Marco. The owner’s approval in step 2 belongs to the separate app flow above. [Read the annotated receipt](02-wallets-and-transactions.md#marcos-receipt-annotated)
 
 ## Same agent, two outcomes
 

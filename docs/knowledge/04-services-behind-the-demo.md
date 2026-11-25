@@ -1,21 +1,21 @@
 # Which service answers which question?
 
-When Marco asks “What did I receive?”, there are three different numbers you might show him. **1 mUSDT** is the amount transferred. A **PHP quote** estimates what a USDT is worth in Philippine pesos. A **USD price** is what the vault reads when checking whether a stablecoin meets the owner’s minimum price. Each comes from a different place.
+For Marco’s payment, start with three questions. **What arrived?** The receipt shows 1 mUSDT. **What would one USDT be worth in pesos?** CoinMarketCap supplies an estimated exchange rate for the screen. **Is the dollar price high enough to pay?** The vault checks a recent Atlas price against the minimum the owner set.
 
 | Question | Who answers it? | What you can demonstrate |
 |---|---|---|
-| Who signed in? | **Privy** issues a signed session after login. The server can check which app and user it belongs to and when it expires. | `make test-privy` authenticated the LeashPay test user. A login establishes identity. Approving a payment plan is a separate wallet signature. |
+| Who signed in? | **Privy** gives LeashPay proof that a user signed in. | `make test-privy` checks that proof for the demo user. The owner still has to approve the payment plan with their wallet. |
 | What did the owner ask for? | **Claude** turns a sentence into a proposed list of payments. LeashPay matches names to addresses and checks the amounts. | `make test-agent` asks for 1 mUSDT each for Linh, Marco and Mai, then checks all three entries. This command only prepares the plan. |
 | What is the payment worth in pesos? | **CoinMarketCap Pro** supplies a timestamped market quote for USDT in PHP. | `make test-cmc` shows the quote and its time. Use it to explain the display beside Marco’s payment. |
-| What price can the contract itself read? | **Atlas** publishes prices on BSC mainnet. A **relay** copies the prices and their original timestamps to testnet, where the vault can read them. | `make test-atlas` compares both observations. The vault can refuse a stale price, a price below its floor, or a swap that would return too few tokens. |
-| How likely is a future USDC depeg? | **Cournot** returns a market-based probability and supporting sources. Our terminal check compares that probability with a threshold to illustrate a choice of coin. | `make test-cournot` queries a market about USDC spending 24 hours below $0.98. It consumes provider quota. Its output is a risk estimate and a routing example. |
-| Can the agent remember a preference? | **Living Brain** stores a note so the agent can search for it later. | `make test-brain` attempts to write, search and read back one new preference. At the 26 November rehearsal the API accepted reads but returned HTTP 402 on the write. The team needs memory credits before claiming a successful round trip. |
+| What price can the vault read? | **Atlas** publishes prices on BSC’s production network (**mainnet**). A **relay** copies each price and the time it was observed onto the practice network (**testnet**). | `make test-atlas` compares the two readings. The vault can stop a payment if the price is too old or below the owner’s minimum. |
+| Which coin would the demo choose? | **Cournot** estimates the chance that USDC will trade below $0.98 for 24 hours in a row by 31 December 2026. | `make test-cournot` counts against the provider’s query allowance. With the default setting, the demo suggests USDT if the estimated chance exceeds 5%. Otherwise it suggests USDC. |
+| Can the agent remember a preference? | **Living Brain** lets the agent save a note, then search for it later. | `make test-brain` tries to save and find one new preference. On 26 November we could read existing data, but saving a new note required more credits (HTTP 402). That part of the demo is pending. |
 | Who covers the network fee? | **NodeReal’s MegaFuel** sponsors eligible testnet transactions under the project’s policy. | Marco’s [sponsored receipt](02-wallets-and-transactions.md) shows gas used and zero gas price for the agent. `make megafuel-status` checks the policy’s remaining credit and expiry. |
 | Where can anyone check the transfer? | **BscScan Testnet** displays public blockchain records. | Give someone the receipt link. They can independently match the vault, Marco’s address, the token and the amount. |
 
 ## Where does the T-bill fit?
 
-A **Treasury bill** is a short-term loan to a government. We wanted to test how payroll could work if some cash were parked between paydays. Our **mock T-bill** is a practice contract. Its shares represent a claim on the test tokens deposited in it. The demo buys no government debt and establishes no investment return.
+A **Treasury bill** is a short-term loan to a government. Our demo uses a **mock T-bill** to answer a payroll question. If the vault sets aside five tokens between paydays, can it get them back in time to pay Linh? When the vault deposits the tokens, it gets **shares** that keep track of its claim. To **redeem** the shares, it gives them back to the practice contract and receives tokens it can spend. This rehearsal uses test tokens throughout.
 
 | What the team did | Spendable mUSDT in the vault | T-bill shares held by the vault |
 |---|---:|---:|
