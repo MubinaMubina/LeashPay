@@ -14,7 +14,7 @@ from testnet import LOCAL, Testnet, calldata
 PAY = 'pay(address,address,uint256,bytes32)'
 
 
-def verify_delivery(net, receipt, vault, agent, token, person, ref):
+def verify_delivery(net, receipt, vault, agent, token, person, ref, *, show=True):
     if (receipt['status'] != '0x1' or receipt['from'].lower() != agent.lower()
             or receipt['to'].lower() != vault.lower() or int(receipt['effectiveGasPrice'], 16) != 0):
         raise RuntimeError('Unexpected payroll receipt status, sender, vault or gas price')
@@ -30,8 +30,10 @@ def verify_delivery(net, receipt, vault, agent, token, person, ref):
                               ['uint256'], block=hex(b))[0] for b in (block - 1, block)]
     if paid != UNIT or transferred != UNIT or after - before != UNIT:
         raise RuntimeError(f"{person['name']}: expected both events and a balance increase of 1 mUSDT")
-    print(f"{person['name']}: {Decimal(before) / UNIT} -> {Decimal(after) / UNIT} mUSDT "
-          f"(+1), https://testnet.bscscan.com/tx/{receipt['transactionHash']}", flush=True)
+    if show:
+        print(f"{person['name']}: {Decimal(before) / UNIT} -> {Decimal(after) / UNIT} mUSDT "
+              f"(+1), https://testnet.bscscan.com/tx/{receipt['transactionHash']}", flush=True)
+    return before, after
 
 
 def payroll(net, roster, get_signer):

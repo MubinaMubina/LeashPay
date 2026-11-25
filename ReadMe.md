@@ -128,6 +128,35 @@ stop it, or use `make stop` from another terminal. Use `make status` to check
 whether it is running and `make logs` to see recent activity. After reboot,
 start it manually for the demo. `make help` lists setup and test commands.
 
+### Live terminal checks
+
+Run these from the repository root with the project `.env`. Install the agent
+dependencies once with `npm ci --prefix agent` (Node 22 or later). Each command
+contacts the service and exits with an error if its evidence is missing.
+
+| Command | What you can show on screen |
+|---|---|
+| `make test-cmc` | The timestamped CoinMarketCap Pro PHP quote for 1 USDT. The testnet token represents USDT for this conversion. |
+| `make test-atlas` | Live BSC mainnet USDT and USDC observations compared with the testnet vault's prices, timestamps and freshness limits. |
+| `make test-cournot` | A USDC depeg market, its probability and sources, and the coin selected by the demo threshold. The call uses the provider's quota. |
+| `make test-brain` | One synthetic preference written to Living Brain, found via search and checked against the page compiled from that capture. Each run creates a new demo note. |
+| `make test-agent` | An actual Claude API call through the agent's planner. The test checks each of the three recipients, addresses, tokens and amounts. |
+| `make test-privy` | A real LeashPay session with a verified signature, issuer, app ID and expiry. Enable a Privy test account or supply a current `PRIVY_ACCESS_TOKEN` locally from the app. |
+| `make test-paiement RUN=jury-1` | One actual sponsored transfer of 1 mUSDT to Marco, his balance before and after, agent gas and a BscScan receipt. |
+| `make test-demo RUN=jury-1` | Claude plans one payment to Marco. The terminal checks the plan, fetches the PHP quote and the Atlas prices, then runs the sponsored transfer. |
+
+The two payment commands share the same run ID. Reusing it on the same Mac
+verifies the recorded payment. A new ID sends another 1 mUSDT, subject to the
+vault's caps and cooldown. Without `RUN`, the command resumes an interrupted
+transfer or starts a new one. Keep the local `.setup/` transaction journal.
+The terminal uses the demo signer and MegaFuel. To exercise the UI's owner
+approval, run the payment from the app. [Live terminal payment to Marco](https://testnet.bscscan.com/tx/0x9842fec16b5c798a4c22cb2411573c1c530bd8c8e0905123ba0ae24cbcd75b3d)
+
+During the 26 November rehearsal, Privy issued a signed test session. Living
+Brain accepted reads and refused the new capture with HTTP 402 because the
+project's prepaid memory balance was insufficient. Once the project has memory
+credit, run `make test-brain` to verify the complete capture and search.
+
 ## Documentation
 
 - [Builder A contract and relay review](docs/reviews/2026-11-25-builder-a.md)

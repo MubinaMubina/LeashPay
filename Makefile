@@ -21,6 +21,10 @@ help:
 	@echo "make seed-demo  Prepare the three BSC testnet payees and simulate the payroll"
 	@echo "make pay-demo  Send and verify 1 mUSDT per demo payee on BSC testnet (3 total, once)"
 	@echo "make verify-demo-payments  Recheck the three payment receipts and balances (read-only)"
+	@echo "make test-cmc | test-atlas | test-cournot | test-brain | test-agent | test-privy   Live service checks"
+	@echo "make test-paiement   Send 1 mUSDT to Marco with MegaFuel and check the receipt"
+	@echo "make test-demo       Claude plan, CMC quote, Atlas price and 1 mUSDT payment to Marco"
+	@echo "                     RUN=jury-1 identifies one payment across retries of either command"
 
 $(PY):
 	$(PYTHON) -m venv "$(VENV)"
@@ -66,6 +70,11 @@ pay-demo: $(DEPS)
 
 verify-demo-payments: $(DEPS)
 	"$(PY)" scripts/pay_demo.py
+
+LIVE_CHECKS := test-cmc test-atlas test-cournot test-brain test-agent test-privy test-paiement test-demo
+.PHONY: $(LIVE_CHECKS)
+$(LIVE_CHECKS): $(DEPS)
+	@"$(PY)" scripts/demo_services.py $(@:test-%=%)
 
 verify-sources: $(DEPS)
 	"$(FORGE)" build --quiet --root contracts
