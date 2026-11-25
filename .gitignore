@@ -9,6 +9,9 @@ node_modules/
 dist/
 *.log
 
+# agent runtime data (plan journal, recipient directory)
+agent/data/
+
 # foundry
 contracts/out/
 contracts/cache/

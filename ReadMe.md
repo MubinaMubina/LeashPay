@@ -69,7 +69,7 @@ The agent's key can never withdraw, change a rule or unpause. The owner can fire
 
 | Track | How LeashPay uses it | Status |
 |---|---|---|
-| **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BNB Chain (BSC testnet); the AI agent acts on-chain through it; idle funds earn yield in a tokenized T-bill | Vault, factory and T-bill interfaces frozen in this repo. Contracts not deployed yet. |
+| **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BNB Chain (BSC testnet); the AI agent acts on-chain through it; idle funds earn yield in a tokenized T-bill | Vault, factory and T-bill interfaces frozen in this repo. Agent server built (plans with Claude, pays through the vault) and tested against a simulated vault. Contracts not deployed yet. |
 | **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Atlas price-feed interface frozen in this repo. CoinMarketCap calls not built yet. |
 | **Cournot** | The depeg guard: a live probability from Cournot decides which stablecoin each payout uses; the dashboard shows the claim, probability and sources; each on-chain payment carries a `ref` linking to that evidence | Payment `ref` in the frozen interface. Cournot calls not built yet. |
 | **ChatAndBuild Living Brain** | The agent's long-term memory: recipients, their preferences, payout history and past attack attempts, recalled before every plan | Not built yet. |
@@ -83,10 +83,11 @@ These statuses are updated as each part lands.
 | [`contracts/src/interfaces/`](contracts/src/interfaces/) | The vault's frozen interface: `ILeashVault`, `ILeashVaultFactory`, `IPriceFeed`, `IFaucetToken` |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
+| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault. Tested against a simulated vault; not yet run against deployed contracts. |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
-Still to come, per the roadmap: the vault, factory, mock tokens and price relay with their Foundry tests (`contracts/`), the agent server (`agent/`), and the dashboard and recipient page (`web/`). Setup steps, deployed contract addresses and the demo video are added when they exist.
+Still to come, per the roadmap: the vault, factory, mock tokens and price relay with their Foundry tests (`contracts/`); the agent's CoinMarketCap, Cournot and Living Brain integrations; and the dashboard and recipient page (`web/`). Deployed contract addresses and the demo video are added when they exist. To run the agent today, see [agent/README.md](agent/README.md).
 
 ## Roadmap
 
@@ -104,6 +105,7 @@ Still to come, per the roadmap: the vault, factory, mock tokens and price relay 
 - [Why the vault looks the way it does](docs/vault-design.md): the threat model, each design decision and its trade-off
 - [How to check a contract against the frozen ABI](docs/how-to-check-abi.md)
 - [How to change the frozen ABI](docs/how-to-change-abi.md)
+- [Agent server](agent/README.md): how a payment flows, how to run it, the HTTP API and the tests
 
 ## Team
 
