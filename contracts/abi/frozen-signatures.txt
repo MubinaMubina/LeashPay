@@ -1,0 +1,71 @@
+# ILeashVault
+error CooldownActive(address,uint256)
+error DuplicatePayment(bytes32,address)
+error ExceedsDailyCap(uint256,uint256)
+error ExceedsMonthlyCap(address,uint256,uint256)
+error ExceedsPaymentCap(uint256,uint256)
+error ExceedsSwapCap(uint256,uint256)
+error InsufficientBalance(address,uint256,uint256)
+error InvalidPrice(address,int256)
+error InvalidRef()
+error InvalidRules()
+error PriceBelowFloor(address,uint256,uint256)
+error PriceFeedNotSet(address)
+error RecipientNotAllowed(address)
+error SlippageTooHigh(uint256,uint256)
+error StalePrice(address,uint256,uint256)
+error TokenNotAllowed(address)
+error Unauthorized(address)
+error VaultPaused()
+error ZeroAddress()
+error ZeroAmount()
+event AgentUpdated(address indexed,address indexed)
+event Paid(address indexed,address indexed,uint256,bytes32 indexed)
+event Paused(address indexed)
+event PriceFeedUpdated(address indexed,address,uint256)
+event RecipientUpdated(address indexed,bool,uint256)
+event RedeemedFromTBill(uint256,uint256)
+event RulesUpdated((uint256,uint256,uint256,uint256,uint256,uint256))
+event Swapped(address indexed,address indexed,uint256,uint256,uint256)
+event SweptToTBill(uint256,uint256)
+event TokenAllowedUpdated(address indexed,bool)
+event Unpaused(address indexed)
+event Withdrawn(address indexed,address indexed,uint256)
+function agent() view returns (address)
+function getPrice(address) view returns (uint256,uint256)
+function isTokenAllowed(address) view returns (bool)
+function owner() view returns (address)
+function pause() nonpayable
+function paused() view returns (bool)
+function pay(address,address,uint256,bytes32) nonpayable
+function priceFeed(address) view returns (address,uint256)
+function recipientInfo(address) view returns (bool,uint256,uint256,uint256)
+function redeemFromTBill(uint256) nonpayable returns (uint256)
+function rules() view returns ((uint256,uint256,uint256,uint256,uint256,uint256))
+function setAgent(address) nonpayable
+function setPriceFeed(address,address,uint256) nonpayable
+function setRecipient(address,bool,uint256) nonpayable
+function setRules((uint256,uint256,uint256,uint256,uint256,uint256)) nonpayable
+function setTokenAllowed(address,bool) nonpayable
+function spentToday() view returns (uint256)
+function swap(address,address,uint256) nonpayable returns (uint256)
+function swappedToday() view returns (uint256)
+function sweepToTBill(uint256) nonpayable returns (uint256)
+function tbill() view returns (address)
+function tbillValue() view returns (uint256)
+function unpause() nonpayable
+function withdraw(address,uint256,address) nonpayable
+
+# ILeashVaultFactory
+error VaultAlreadyExists(address,address)
+event VaultCreated(address indexed,address indexed,address indexed)
+function config() view returns ((address,address,address,address,uint256,address,address,address))
+function createVault((uint256,uint256,uint256,uint256,uint256,uint256)) nonpayable returns (address)
+function vaultOf(address) view returns (address)
+
+# IPriceFeed
+function decimals() view returns (uint8)
+function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)
+
+# IFaucetToken
+function mint(address,uint256) nonpayable
