@@ -28,3 +28,7 @@ contracts/broadcast/
 # Python operational scripts
 __pycache__/
 *.pyc
+
+# web: files Next.js regenerates on every dev/build run
+web/next-env.d.ts
+*.tsbuildinfo
