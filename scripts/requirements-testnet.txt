@@ -1,0 +1,4 @@
+eth-account==0.13.7
+eth-abi==6.0.0
+requests>=2.32.5,<3
+python-dotenv>=1.2,<2

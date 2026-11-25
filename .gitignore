@@ -16,7 +16,15 @@ agent/data/
 contracts/out/
 contracts/cache/
 contracts/broadcast/
+/cache/
 
 # os / editor
 .DS_Store
 .vscode/
+
+# local credentials setup records (no source files)
+.setup/
+
+# Python operational scripts
+__pycache__/
+*.pyc

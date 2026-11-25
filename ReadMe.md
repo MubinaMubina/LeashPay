@@ -69,8 +69,8 @@ The agent's key can never withdraw, change a rule or unpause. The owner can fire
 
 | Track | How LeashPay uses it | Status |
 |---|---|---|
-| **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BNB Chain (BSC testnet); the AI agent acts on-chain through it; idle funds earn yield in a tokenized T-bill | Vault, factory and T-bill interfaces frozen in this repo. Agent server built (plans with Claude, pays through the vault) and tested against a simulated vault. Contracts not deployed yet. |
-| **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Atlas price-feed interface frozen in this repo. CoinMarketCap calls not built yet. |
+| **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BSC testnet and the AI agent acts on-chain through it. The agent can invest idle mUSDT in a mock tokenized T-bill and redeem it for payments. | The agent signed a sponsored deposit, withdrawal and 5 mUSDT payment. [Testnet receipts and balances](contracts/README.md#t-bill-deposit-withdrawal-and-payment). The agent server (plans with Claude, pays through the vault once the owner signs) made its first real payment on 26 Nov: 1 mUSDT to Marco, run by the owner's signature. [Payment on BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc) |
+| **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Both testnet relays mirror real Atlas mainnet observations, preserving source timestamps. Local polling worker implemented. [Sponsored swap and simulated slippage refusal](contracts/deployments/97-atlas-swap.json) verified. CoinMarketCap integration pending. |
 | **Cournot** | The depeg guard: a live probability from Cournot decides which stablecoin each payout uses; the dashboard shows the claim, probability and sources; each on-chain payment carries a `ref` linking to that evidence | Payment `ref` in the frozen interface. Cournot calls not built yet. |
 | **ChatAndBuild Living Brain** | The agent's long-term memory: recipients, their preferences, payout history and past attack attempts, recalled before every plan | Not built yet. |
 
@@ -81,25 +81,41 @@ These statuses are updated as each part lands.
 | Path | What it is |
 |---|---|
 | [`contracts/src/interfaces/`](contracts/src/interfaces/) | The vault's frozen interface: `ILeashVault`, `ILeashVaultFactory`, `IPriceFeed`, `IFaucetToken` |
+| [`contracts/`](contracts/) | Vault, factory, testnet mocks, Atlas relay and 57 Foundry tests. [Setup and limitations](contracts/README.md) |
+| [`contracts/deployments/`](contracts/deployments/) | Chain 97 addresses, Atlas observations and receipts for payments, swaps and the T-bill round trip |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
-| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. Tested against a simulated vault; not yet run against deployed contracts. |
+| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 166 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
-Still to come, per the roadmap: the vault, factory, mock tokens and price relay with their Foundry tests (`contracts/`); the agent's CoinMarketCap, Cournot and Living Brain integrations; and the dashboard and recipient page (`web/`). Deployed contract addresses and the demo video are added when they exist. To run the agent today, see [agent/README.md](agent/README.md).
+Still to come, per the roadmap: the agent's CoinMarketCap, Cournot and Living Brain integrations; the dashboard and recipient page (`web/`); and the demo video. Source
+publication on BscScan awaits approval. Hosting will be reconfirmed at deployment;
+Vercel is the current preference, with Cloudflare still an option. To run the agent today, see [agent/README.md](agent/README.md).
 
 ## Roadmap
 
 | Gate | Time (Bangkok) | What must be true | Status |
 |---|---|---|---|
 | ABI frozen | Wed 25 Nov, 20:30 | Both builders agree on the vault interface | Done: approved and merged on 25 Nov |
-| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | Next |
+| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | Done on 26 Nov at 02:58: Claude planned "Pay Marco 1 USDT", the vault owner signed the plan, and the agent server paid 1 mUSDT through the vault. [Payment on BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc) |
 | Full demo works | Thu 26 Nov, 18:00 | All three demo moments, end to end; feature freeze | Upcoming |
 | Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded | Upcoming |
-| Submitted | Fri 27 Nov, 02:00 | Submitted on HackQuest to all four tracks | Upcoming |
+| Submitted | Fri 27 Nov, 09:00 | Submitted on HackQuest to all four tracks | Upcoming |
+
+**Jury demo:** MegaFuel sponsorship ends **Friday 27 November 2026 at 09:00 Bangkok time** (02:00 UTC). Run `make megafuel-status` before presenting. [Extend the demo window or top up testnet gas](docs/megafuel-jury.md).
+
+## Run locally
+
+From the repository root, `make start` runs the Atlas relay in the current
+terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
+stop it, or use `make stop` from another terminal. Use `make status` to check
+whether it is running and `make logs` to see recent activity. After reboot,
+start it manually for the demo. `make help` lists setup and test commands.
 
 ## Documentation
+
+- [Builder A contract and relay review](docs/reviews/2026-11-25-builder-a.md)
 
 - [Vault ABI reference](docs/vault-abi.md): every function, event and error, with units, roles and the required tests
 - [Why the vault looks the way it does](docs/vault-design.md): the threat model, each design decision and its trade-off

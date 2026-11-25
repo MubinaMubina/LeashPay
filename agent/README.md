@@ -2,7 +2,7 @@
 
 The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 1st"*, into a payment plan. It shows the owner what the vault will say about each payment, and once the owner approves the plan with a wallet signature, it pays through the vault with its own key. The agent plans; the vault decides. Its key can only call the vault's agent functions, so even a tricked or hacked agent stays inside the owner's rules.
 
-**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (166 tests). They have not yet run against deployed contracts, and the Claude planner has not yet made a live API call. Currency conversion (CoinMarketCap), the depeg guard (Cournot) and memory (Living Brain) are separate branches still to come.
+**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (166 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). Currency conversion (CoinMarketCap), the depeg guard (Cournot) and memory (Living Brain) are separate branches still to come.
 
 ## How a payment flows
 

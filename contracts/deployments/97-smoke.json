@@ -1,0 +1,15 @@
+{
+  "chainId": 97,
+  "vault": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+  "owner": "0x9B3f81b1B6E8baecAbD47698A46Fa3684834A7c2",
+  "recipient": "0x47D948f58f4a495283BF0F74257E2F73D446D7Ea",
+  "token": "0x0081297D056308340E5501B5F2f076344A46aB44",
+  "amount": "1000000000000000000",
+  "ref": "0x7b892c2070f54cd31eff95bd47a3a94f3e075115b14e5f4ef1d91405df5b7010",
+  "transactionHash": "0xc358512d795e0ea18e218f5816ecf2f32b386fff1bd5cde742648c15648a079d",
+  "block": 144816416,
+  "effectiveGasPrice": "0",
+  "recipientBalanceDelta": "1000000000000000000",
+  "agentBNBUnchanged": true,
+  "explorer": "https://testnet.bscscan.com/tx/0xc358512d795e0ea18e218f5816ecf2f32b386fff1bd5cde742648c15648a079d"
+}

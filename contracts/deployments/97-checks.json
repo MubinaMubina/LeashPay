@@ -1,0 +1,21 @@
+{
+  "chainId": 97,
+  "transactionHash": "0xc358512d795e0ea18e218f5816ecf2f32b386fff1bd5cde742648c15648a079d",
+  "vault": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+  "paidEventVerified": true,
+  "recipientBalanceDelta": "1000000000000000000",
+  "agentBNBBefore": "50000000000000000",
+  "agentBNBAfter": "50000000000000000",
+  "effectiveGasPrice": "0",
+  "simulationBlock": 144816910,
+  "refusals": {
+    "duplicatePayment": {
+      "error": "DuplicatePayment(bytes32,address)",
+      "revertData": "0xac380ba37b892c2070f54cd31eff95bd47a3a94f3e075115b14e5f4ef1d91405df5b701000000000000000000000000047d948f58f4a495283bf0f74257e2f73d446d7ea"
+    },
+    "unauthorizedRecipient": {
+      "error": "RecipientNotAllowed(address)",
+      "revertData": "0x6ee9124e000000000000000000000000000000000000000000000000000000000000bad0"
+    }
+  }
+}

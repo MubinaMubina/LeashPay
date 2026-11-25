@@ -1,0 +1,63 @@
+{
+  "chainId": 97,
+  "vault": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+  "agent": "0xbb74182dE67BE79076CDEd21be54b084B81797A0",
+  "asset": "0x0081297d056308340e5501b5f2f076344a46ab44",
+  "tbill": "0xc821ec5277ff38601b44e59c6e756c23ddcb021d",
+  "recipient": "0x47D948f58f4a495283BF0F74257E2F73D446D7Ea",
+  "ref": "0x517bcc6c064a51c692c8ccb3ed80847b03e9aeb5c6bfa39d425c24c8a259a396",
+  "amountUSDTBaseUnits": "5000000000000000000",
+  "transactions": {
+    "sweep": {
+      "hash": "0x36169f72200d39ad3e687e5fa0693e4dd79ee03bb9255bdf9a39cfc770b670de",
+      "block": 144836233,
+      "effectiveGasPrice": "0",
+      "before": {
+        "vaultUSDT": "998000000000000000000",
+        "vaultShares": "0",
+        "billUSDT": "0",
+        "recipientUSDT": "1000000000000000000"
+      },
+      "after": {
+        "vaultUSDT": "993000000000000000000",
+        "vaultShares": "5000000000000000000",
+        "billUSDT": "5000000000000000000",
+        "recipientUSDT": "1000000000000000000"
+      }
+    },
+    "redeem": {
+      "hash": "0xd5d6051a5bdb65a76b16f303b8bcc2d761624ffef7b6b58fe3f6a2cdf511c6f4",
+      "block": 144836248,
+      "effectiveGasPrice": "0",
+      "before": {
+        "vaultUSDT": "993000000000000000000",
+        "vaultShares": "5000000000000000000",
+        "billUSDT": "5000000000000000000",
+        "recipientUSDT": "1000000000000000000"
+      },
+      "after": {
+        "vaultUSDT": "998000000000000000000",
+        "vaultShares": "0",
+        "billUSDT": "0",
+        "recipientUSDT": "1000000000000000000"
+      }
+    },
+    "pay": {
+      "hash": "0xbdd84fa076be1e36c900f1bea7c9a5cc99c420c773923fef80fe8c4165d2c63e",
+      "block": 144836301,
+      "effectiveGasPrice": "0",
+      "before": {
+        "vaultUSDT": "998000000000000000000",
+        "vaultShares": "0",
+        "billUSDT": "0",
+        "recipientUSDT": "1000000000000000000"
+      },
+      "after": {
+        "vaultUSDT": "993000000000000000000",
+        "vaultShares": "0",
+        "billUSDT": "0",
+        "recipientUSDT": "6000000000000000000"
+      }
+    }
+  }
+}
