@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { Hex } from "viem";
+import { getAddress, type Hex } from "viem";
 import { z } from "zod";
 import { AddressSchema } from "./validation";
 
@@ -28,10 +28,18 @@ const EnvSchema = z.object({
   LLM_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
   AGENT_API_TOKEN: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
+  /** "1" turns on POST /plans/:id/demo-attack for the live demo. Off unless set. */
+  AGENT_DEMO_ATTACK: z.preprocess(emptyToUndefined, z.enum(["0", "1"]).default("0")),
   DATA_DIR: z.string().default(path.resolve(here, "../data")),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
+
+/**
+ * The only address the demo attack may target (web/lib/demo.ts uses the same one). The web
+ * app refuses to allowlist it, so the vault always answers RecipientNotAllowed.
+ */
+export const DEMO_ATTACK_ADDRESS = getAddress("0xbad5000000000000000000000000000000000bad");
 
 /** The agent was asked to do something its configuration can't support yet. */
 export class ConfigurationError extends Error {

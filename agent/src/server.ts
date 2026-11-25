@@ -30,6 +30,7 @@ const app = createApp({
   apiToken: config.AGENT_API_TOKEN,
   // Only this machine can connect, so only its own names are valid in the Host header.
   allowedHosts: local ? localHostHeaders(config) : undefined,
+  demoAttack: config.AGENT_DEMO_ATTACK === "1",
 });
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (info) => {

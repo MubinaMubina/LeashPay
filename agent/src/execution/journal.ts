@@ -9,6 +9,11 @@ export type JournalEvent =
   | { type: "plan_created"; planId: string; at: string; plan: PlanJson }
   /** A signed pay() transaction, journaled before it is broadcast. Its outcome is not known yet. */
   | { type: "step_sent"; planId: string; at: string; index: number; hash: Hex }
+  /**
+   * The demo attack's pay(), signed without the owner and journaled before broadcast. It
+   * isn't a step_sent: a later owner-approved run must not treat it as its own payment.
+   */
+  | { type: "demo_attack_sent"; planId: string; at: string; index: number; hash: Hex }
   /** The payment is final on-chain (hash is null when proven by the vault's DuplicatePayment refusal). */
   | { type: "step_succeeded"; planId: string; at: string; index: number; hash: Hex | null; note?: string }
   /**

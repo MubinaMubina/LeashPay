@@ -85,7 +85,7 @@ These statuses are updated as each part lands.
 | [`contracts/deployments/`](contracts/deployments/) | Chain 97 addresses, Atlas observations and receipts for payments, swaps and the T-bill round trip |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
-| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 166 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
+| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 182 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 

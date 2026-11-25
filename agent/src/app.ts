@@ -5,9 +5,9 @@ import { bodyLimit } from "hono/body-limit";
 import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from "viem";
 import { z } from "zod";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
-import { ConfigurationError } from "./config";
+import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
 import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
-import { AgentBusyError, type Executor } from "./execution/executor";
+import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
 import { toJson, type PlanJson } from "./json";
 import { buildPlan, isDue, isExecutable, planLimitNotes, type Plan } from "./plan/build";
@@ -29,6 +29,8 @@ export interface AppDeps {
    * this machine only, so a web page can't reach it through a DNS name that points here.
    */
   allowedHosts?: string[];
+  /** Turns on POST /plans/:id/demo-attack (AGENT_DEMO_ATTACK=1). Off by default: the route answers 404. */
+  demoAttack?: boolean;
   now?: () => Date;
   newId?: () => string;
 }
@@ -267,11 +269,26 @@ export function createApp(deps: AppDeps) {
     return c.json(toJson({ planId: plan.id, results }));
   });
 
+  // The live demo's attack: a payment the vault must refuse, sent without the owner's
+  // signature to play a compromised agent. It can only target DEMO_ATTACK_ADDRESS
+  // (see Executor.demoAttack), so it can never move money.
+  app.post("/plans/:id/demo-attack", async (c) => {
+    if (!deps.demoAttack) return c.json({ error: "Not found." }, 404);
+    const plan = deps.journal.plan(c.req.param("id"));
+    if (!plan) return c.json({ error: "No plan with that id." }, 404);
+    const refusal = notRunnable(c, plan);
+    if (refusal) return refusal;
+    const results = await deps.executor.demoAttack(plan, DEMO_ATTACK_ADDRESS);
+    return c.json(toJson({ planId: plan.id, results }));
+  });
+
   app.onError((err, c) => {
     if (err instanceof BadRequestError) {
       return c.json({ error: err.message, ...(err.details === undefined ? {} : { details: err.details }) }, 400);
     }
-    if (err instanceof DirectoryRuleError || err instanceof AgentBusyError) return c.json({ error: err.message }, 409);
+    if (err instanceof DirectoryRuleError || err instanceof AgentBusyError || err instanceof AttackRefusedError) {
+      return c.json({ error: err.message }, 409);
+    }
     if (err instanceof ConfigurationError) return c.json({ error: err.message }, 503);
     if (err instanceof PlannerError) return c.json({ error: err.message }, 502);
     if (err instanceof Anthropic.AuthenticationError) {

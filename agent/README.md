@@ -2,7 +2,7 @@
 
 The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 1st"*, into a payment plan. It shows the owner what the vault will say about each payment, and once the owner approves the plan with a wallet signature, it pays through the vault with its own key. The agent plans; the vault decides. Its key can only call the vault's agent functions, so even a tricked or hacked agent stays inside the owner's rules.
 
-**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (166 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). Currency conversion (CoinMarketCap), the depeg guard (Cournot) and memory (Living Brain) are separate branches still to come.
+**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (182 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). Currency conversion (CoinMarketCap), the depeg guard (Cournot) and memory (Living Brain) are separate branches still to come.
 
 ## How a payment flows
 
@@ -88,6 +88,7 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 | `GET /plans/:id` | The plan and every journal event for it. |
 | `GET /plans/:id/approval` | `{ message, expires, payEarly }`: the text the owner's wallet signs to run the plan, valid 10 minutes. Add `?payEarly=true` to run a dated plan before its day. |
 | `POST /plans/:id/execute` | `{ expires, signature, payEarly }` from the approval and the owner's wallet → runs the plan. Each approval runs once; to run the plan again, get and sign a fresh one. Payments that went through are never repeated, and "pending" ones are settled. |
+| `POST /plans/:id/demo-attack` | Only with `AGENT_DEMO_ATTACK=1` (otherwise 404). For the live demo: plays a compromised agent paying without the owner's signature, and shows the vault refusing it on-chain. It only targets the fixed demo address `0xBaD5…0BAD`, which the web app never allowlists. It re-checks the vault's allowlist right before signing, and answers 409 for any plan that pays anyone else, so it can never move money. It returns `[{ hash, status: "reverted" \| "pending" \| "succeeded", reason, reasonSource: "replay" \| "preview", block }]`: the reason comes from re-running the same call at the block before (`replay`), or from the plan's vault check if that fails (`preview`). |
 
 Amounts in responses are strings of 18-decimal base units (`"300000000000000000000"` is 300 USDT). Errors come back as `{ error }` with a matching status:
 
@@ -97,7 +98,7 @@ Amounts in responses are strings of 18-decimal base units (`"3000000000000000000
 | 401 | Missing API token, or an approval that is expired, already used or not signed by the plan's owner |
 | 403 | The request wasn't addressed to this machine |
 | 404 | Unknown plan or vault |
-| 409 | The agent is running another plan (try again when it finishes), the plan's date hasn't come, or the directory already has that name or 200 recipients |
+| 409 | The agent is running another plan (try again when it finishes), the plan's date hasn't come, the directory already has that name or 200 recipients, or the demo attack was asked to pay anyone but the demo address |
 | 413 / 415 | Body over 32 KB / body that isn't JSON |
 | 422 | The plan has no vault, or the message wasn't a payment request |
 | 500 | The agent's own data file is damaged (the message names it) |
@@ -156,7 +157,7 @@ Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can ru
 ## Tests
 
 ```bash
-npm test          # 166 tests; no API key, chain or network needed
+npm test          # 182 tests; no API key, chain or network needed
 npm run build     # type-check
 npm run abi:check # the generated ABI matches the Solidity interfaces
 ```
@@ -169,6 +170,7 @@ The tests cover:
 - the text the owner signs (flags, notes, dates, one-line names), the local signature check and one-time approvals;
 - the Claude request, including the real SDK with refusals and cut-off replies;
 - the HTTP routes: owner signatures, expiry, early payment, per-owner directories, and the network guards;
+- the demo attack: off without its flag, only ever the demo address (409 otherwise, nothing sent), the allowlist re-check, reverted, pending and unexpected-success outcomes, the replayed or preview reason, and that it shares the one-plan lock, nonce order and journal with real payments without disturbing them;
 - the journal's crash and full-disk recovery, owner-only data files, the data-folder lock, and `npm run key`'s file permissions and key detection.
 
 The vault, the chain and Claude are replaced by fakes, so a green run doesn't prove behavior against the deployed contracts or the live model.
