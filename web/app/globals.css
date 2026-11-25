@@ -544,3 +544,34 @@ code {
 .attack.failed-guard a {
   color: #fff;
 }
+
+/* Recipient phone page (/r/[address]). */
+.phone {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 16px 18px 40px;
+}
+.phone-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.phone h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.received {
+  margin-top: 12px;
+}
+.received-amount {
+  font-size: 22px;
+  font-weight: 700;
+}
+.received a {
+  font-size: 14px;
+}
+.btn.wide {
+  width: 100%;
+  margin-top: 18px;
+}
