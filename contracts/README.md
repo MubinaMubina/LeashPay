@@ -108,6 +108,16 @@ rerun the same command with the existing local transaction journal. Matching
 permissions are skipped. Conflicting existing caps are reported for owner review.
 If a payment simulation reports a stale price, refresh the Atlas relay and rerun.
 
+Run `make pay-demo` to send 1 mUSDT from the vault to each of the three
+addresses. The agent submits three separate transactions through MegaFuel.
+The command prints each BscScan receipt and the payee's balance before and
+after the payment block. It checks the vault's `Paid` event, the token's
+`Transfer` event and the 1 mUSDT increase. The local journal records each
+transaction before submission. After an interruption, rerun `make pay-demo`
+on the same Mac to finish this batch. Each payee keeps the same on-chain
+payment reference across retries. Use `make verify-demo-payments` on the
+same checkout to replay the recorded receipts in read-only mode.
+
 On 26 November 2026, the first run registered [Marco](https://testnet.bscscan.com/tx/0x47756bdc5e6fc36bc647afc7b5798488c0116074bf20e6eb952aaadf4efbaec2)
 and [Mai](https://testnet.bscscan.com/tx/0xed9c35052970f1e054b297907a3fc22ecff6cdb89089e45cde14613ab9f3e7e2).
 The second run sent zero transactions. Across its verification window, the
