@@ -60,6 +60,10 @@ contract LeashVault is ILeashVault, ReentrancyGuard {
         _allowedTokens[cfg.usdc] = true;
         _feeds[cfg.usdt] = Feed(cfg.usdtFeed, cfg.maxPriceAge);
         _feeds[cfg.usdc] = Feed(cfg.usdcFeed, cfg.maxPriceAge);
+        emit RulesUpdated(rules_);
+        emit PriceFeedUpdated(cfg.usdt, cfg.usdtFeed, cfg.maxPriceAge);
+        emit PriceFeedUpdated(cfg.usdc, cfg.usdcFeed, cfg.maxPriceAge);
+        emit AgentUpdated(address(0), cfg.defaultAgent);
     }
 
     modifier onlyOwner() {
@@ -135,8 +139,8 @@ contract LeashVault is ILeashVault, ReentrancyGuard {
         if (amountIn > remaining) revert ExceedsSwapCap(amountIn, remaining);
         (uint256 priceIn,) = getPrice(tokenIn);
         (uint256 priceOut,) = getPrice(tokenOut);
-        uint256 minimum = Math.mulDiv(Math.mulDiv(amountIn, priceIn, priceOut), 10_000 - _rules.maxSlippageBps, 10_000);
         _checkBalance(tokenIn, amountIn);
+        uint256 minimum = Math.mulDiv(Math.mulDiv(amountIn, priceIn, priceOut), 10_000 - _rules.maxSlippageBps, 10_000);
         _swapDay = block.timestamp / 1 days;
         _dailySwapped = swapped + amountIn;
         uint256 beforeOut = IERC20(tokenOut).balanceOf(address(this));
@@ -152,11 +156,13 @@ contract LeashVault is ILeashVault, ReentrancyGuard {
     function sweepToTBill(uint256 assets) external operator whenActive nonReentrant returns (uint256 shares) {
         if (assets == 0) revert ZeroAmount();
         _checkBalance(_usdt, assets);
+        uint256 valueBefore = _treasuryValue();
         IERC20(_usdt).forceApprove(tbill, assets);
         shares = IERC4626(tbill).deposit(assets, address(this));
         IERC20(_usdt).forceApprove(tbill, 0);
         // Refuse an ERC4626 rounding-to-zero deposit instead of donating funds.
         if (shares == 0) revert ZeroAmount();
+        _checkTreasuryValue(valueBefore);
         emit SweptToTBill(assets, shares);
     }
 
@@ -164,7 +170,9 @@ contract LeashVault is ILeashVault, ReentrancyGuard {
         if (assets == 0) revert ZeroAmount();
         uint256 available = IERC4626(tbill).maxWithdraw(address(this));
         if (assets > available) revert InsufficientBalance(tbill, available, assets);
+        uint256 valueBefore = _treasuryValue();
         shares = IERC4626(tbill).withdraw(assets, address(this), address(this));
+        _checkTreasuryValue(valueBefore);
         emit RedeemedFromTBill(assets, shares);
     }
 
@@ -293,5 +301,17 @@ contract LeashVault is ILeashVault, ReentrancyGuard {
 
     function _remaining(uint256 cap, uint256 spent) private pure returns (uint256) {
         return cap > spent ? cap - spent : 0;
+    }
+
+    function _treasuryValue() private view returns (uint256) {
+        return IERC20(_usdt).balanceOf(address(this)) + tbillValue();
+    }
+
+    function _checkTreasuryValue(uint256 valueBefore) private view {
+        uint256 valueAfter = _treasuryValue();
+        // At most one base unit (1e-18 USDT) of conversion dust per action.
+        // Check actual asset/share balances, not the ERC4626 return value.
+        uint256 minimum = valueBefore == 0 ? 0 : valueBefore - 1;
+        if (valueAfter < minimum) revert SlippageTooHigh(minimum, valueAfter);
     }
 }

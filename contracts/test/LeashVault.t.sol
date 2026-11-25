@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -619,5 +620,66 @@ contract LeashVaultTest is Test {
             assertEq(usdt.balanceOf(LINH) + usdc.balanceOf(LINH), paid);
             assertLe(paid, 1000e18);
         }
+    }
+
+    function test_tbillRejectsNonzeroShareDepositThatLosesAssets() public {
+        ready();
+        usdt.mint(address(bill), 10e18);
+        vm.expectRevert(abi.encodeWithSelector(IV.SlippageTooHigh.selector, 10_000e18 - 1, 9997.5e18));
+        vm.prank(AGENT);
+        vault.sweepToTBill(15e18);
+        assertEq(usdt.balanceOf(address(vault)), 10_000e18);
+        assertEq(bill.balanceOf(address(vault)), 0);
+    }
+
+    function test_tbillRejectsRoundedWithdrawalThatDestroysValue() public {
+        ready();
+        vm.prank(AGENT);
+        vault.sweepToTBill(1);
+        usdt.mint(address(bill), 9e18);
+        vm.expectRevert(abi.encodeWithSelector(IV.SlippageTooHigh.selector, 10004.5e18 - 1, 10_000e18));
+        vm.prank(AGENT);
+        vault.redeemFromTBill(1);
+        assertEq(bill.balanceOf(address(vault)), 1);
+        vm.startPrank(OWNER);
+        vault.pause();
+        vault.withdraw(address(bill), 1, OWNER);
+        vm.stopPrank();
+        assertEq(bill.balanceOf(OWNER), 1);
+    }
+
+    function test_factoryEmitsAllInitialConfigurationEvents() public {
+        vm.recordLogs();
+        address created = factory.createVault(baseRules());
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 5);
+        assertEq(logs[0].emitter, created);
+        assertEq(logs[0].topics[0], keccak256("RulesUpdated((uint256,uint256,uint256,uint256,uint256,uint256))"));
+        assertEq(logs[0].data, abi.encode(baseRules()));
+        for (uint256 i = 1; i <= 2; i++) {
+            assertEq(logs[i].emitter, created);
+            assertEq(logs[i].topics[0], keccak256("PriceFeedUpdated(address,address,uint256)"));
+            assertEq(logs[i].topics[1], bytes32(uint256(uint160(i == 1 ? address(usdt) : address(usdc)))));
+            assertEq(logs[i].data, abi.encode(i == 1 ? address(feedT) : address(feedC), uint256(3600)));
+        }
+        assertEq(logs[3].emitter, created);
+        assertEq(logs[3].topics[0], keccak256("AgentUpdated(address,address)"));
+        assertEq(logs[3].topics[1], bytes32(0));
+        assertEq(logs[3].topics[2], bytes32(uint256(uint160(AGENT))));
+        assertEq(logs[4].emitter, address(factory));
+        assertEq(logs[4].topics[0], keccak256("VaultCreated(address,address,address)"));
+        assertEq(logs[4].topics[1], bytes32(uint256(uint160(address(this)))));
+        assertEq(logs[4].topics[2], bytes32(uint256(uint160(created))));
+        assertEq(logs[4].topics[3], bytes32(uint256(uint160(AGENT))));
+    }
+
+    function test_swapHugeUnfundedInputReturnsBalanceError() public {
+        IV.Rules memory r = baseRules();
+        r.dailySwapCap = type(uint256).max;
+        ownerRules(r);
+        feedT.set(101e6, block.timestamp, 8);
+        vm.expectRevert(abi.encodeWithSelector(IV.InsufficientBalance.selector, address(usdt), 0, type(uint256).max));
+        vm.prank(AGENT);
+        vault.swap(address(usdt), address(usdc), type(uint256).max);
     }
 }

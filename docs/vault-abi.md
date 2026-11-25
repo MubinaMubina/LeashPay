@@ -2,7 +2,7 @@
 
 This is the complete reference for the vault interface that sits between LeashPay's smart contracts (Builder A) and its AI agent and web app (Builder B). The agent server and the dashboard call exactly these functions, listen for these events and show these errors. Builder A's `LeashVault` must implement every one of them.
 
-**Status:** frozen. Builder A reviewed and approved v1, and it was merged into `main` on 25 Nov 2026. The interfaces compile; no contract implements them or is deployed yet.
+**Status:** frozen. Builder A reviewed and approved v1, and it was merged into `main` on 25 Nov 2026. The interfaces compile; the implementation and local Foundry tests are now present on `a/vault-core`; see `contracts/README.md` for deployment evidence.
 
 - Source: [`contracts/src/interfaces/`](../contracts/src/interfaces/)
 - Frozen signature list: [`contracts/abi/frozen-signatures.txt`](../contracts/abi/frozen-signatures.txt)
@@ -112,6 +112,7 @@ Moves idle USDT into the tokenized T-bill, the vault's real-world-asset treasury
 
 - **Caller:** agent or owner.
 - **Checks:** `Unauthorized`, `VaultPaused`, `ZeroAmount`, `InsufficientBalance`.
+- **Additional treasury safety:** compares actual liquid USDT plus the redeemable value of held shares before and after. A loss exceeding one base unit (1e-18 USDT) reverts `SlippageTooHigh`; a zero-share deposit reverts `ZeroAmount`.
 - **Emits:** `SweptToTBill(assets, shares)`.
 
 #### `redeemFromTBill(uint256 assets) returns (uint256 shares)`
@@ -120,6 +121,7 @@ Pulls USDT back out of the T-bill, for example right before a payout. `assets` i
 
 - **Caller:** agent or owner.
 - **Checks:** `Unauthorized`, `VaultPaused`, `ZeroAmount`, `InsufficientBalance` (token = the T-bill, amounts in USDT terms).
+- **Additional treasury safety:** the same one-base-unit loss bound applies; excessive rounding loss reverts `SlippageTooHigh`.
 - **Emits:** `RedeemedFromTBill(assets, shares)`.
 
 ### Owner actions
@@ -214,7 +216,7 @@ One more error can appear but is not in the interface: OpenZeppelin's `Reentranc
 
 ## Rules, errors and required tests
 
-The interface fixes names and types. This table fixes **behavior**: each rule, the error that proves it, and the Foundry test Builder A writes for it. Status: none of these tests exist yet; they are Builder A's next work.
+The interface fixes names and types. This table fixes **behavior**: each rule, the error that proves it, and the Foundry test Builder A writes for it. These tests are implemented in `contracts/test/` and run in CI.
 
 | Rule | Error | Foundry test |
 |---|---|---|
