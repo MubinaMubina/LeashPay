@@ -46,20 +46,5 @@ contract DeployTestnet is Script {
         usdt.mint(address(dex), 100_000e18);
         usdc.mint(address(dex), 100_000e18);
         vm.stopBroadcast();
-        string memory keyJson = "deployment";
-        vm.serializeUint(keyJson, "chainId", 97);
-        vm.serializeString(keyJson, "status", "prepared; confirm receipts before use");
-        vm.serializeAddress(keyJson, "deployer", deployer);
-        vm.serializeAddress(keyJson, "agent", agent);
-        vm.serializeAddress(keyJson, "reporter", reporter);
-        vm.serializeAddress(keyJson, "factory", address(factory));
-        vm.serializeAddress(keyJson, "usdt", address(usdt));
-        vm.serializeAddress(keyJson, "usdc", address(usdc));
-        vm.serializeAddress(keyJson, "usdtFeed", address(usdtFeed));
-        vm.serializeAddress(keyJson, "usdcFeed", address(usdcFeed));
-        vm.serializeAddress(keyJson, "tbill", address(bill));
-        vm.serializeAddress(keyJson, "dex", address(dex));
-        string memory output = vm.serializeUint(keyJson, "maxPriceAge", 25 hours);
-        vm.writeJson(output, "deployments/97.json");
     }
 }

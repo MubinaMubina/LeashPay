@@ -34,11 +34,11 @@ The agent key reaches four functions. Three of them (`swap`, `sweepToTBill`, `re
 
 | If this is stolen | The attacker can | The attacker cannot |
 |---|---|---|
-| Agent key | Pay people already on the allowlist, within the caps, once per plan per person; lose at most `dailySwapCap × 2%` a day on swaps | Pay a new address, withdraw, change rules, unpause |
+| Agent key | Pay people already on the allowlist, within the caps, once per plan per person; swap up to the daily input cap at rates within the configured tolerance of the Atlas quote | Pay a new address, withdraw, change rules, unpause |
 | Reporter key (testnet) | Fake the testnet prices: make swaps accept bad rates (at most the daily swap cap is at risk) or block payments through the price floor | Move money out of the vault |
 | Owner key | Everything | (Privy secures this key; out of scope for the vault) |
 
-The owner's response to a stolen agent key is two clicks: `pause()` stops everything, `setAgent(address(0))` fires the agent.
+The owner's response to a stolen agent key is two clicks: `pause()` stops agent operations, `setAgent(address(0))` fires the agent.
 
 ## The decisions
 
@@ -73,7 +73,7 @@ The owner deposits USDT. Some freelancers prefer USDC, and the depeg guard may s
 1. Each swap must land within `maxSlippageBps` of the Atlas price, capped at 2%. Stablecoin-to-stablecoin swaps never need more.
 2. All swaps together are capped per day by `dailySwapCap`.
 
-The second limit came from an outside review. Without it, a hacked agent could swap back and forth all day, losing up to the slippage limit each time, while never breaking a payment rule. With it, the worst case is the swap cap times 2% per day.
+The second limit came from an outside review. Without it, a hacked agent could swap back and forth all day, losing up to the slippage limit each time, while never breaking a payment rule. The cap limits the total nominal input across both tokens. Each swap enforces its minimum against the accepted oracle observation, rounded down to whole base units. Market prices can move before the next observation.
 
 *Trade-off:* paying in USDC from USDT takes two transactions (swap, then pay). We kept them separate because a swap hidden inside `pay` would be harder to test and to explain.
 

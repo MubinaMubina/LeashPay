@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Verify deployed testnet source code; API credentials are never logged."""
 import json, os, shutil, subprocess, time
+from dotenv import dotenv_values
 from eth_abi import encode
-from testnet import Testnet, ROOT, LOCAL, MANIFEST, RULES, RULES_TYPE, save
+from testnet import Testnet, ROOT, LOCAL, RULES, RULES_TYPE, save
 
 
 def main():
-    t=Testnet(); m=t.manifest()
+    t = Testnet(roles=())
+    m = t.manifest()
+    etherscan_key = dotenv_values(ROOT / '.env').get('ETHERSCAN_API_KEY') or os.environ.get('ETHERSCAN_API_KEY')
+    if not etherscan_key:
+        raise RuntimeError('ETHERSCAN_API_KEY is required for source verification')
+    LOCAL.mkdir(parents=True, exist_ok=True)
     if m.get('status')!='confirmed': raise RuntimeError('Confirm deployment first')
     cfg=tuple(m[k] for k in ('usdt','usdc','usdtFeed','usdcFeed'))+(m['maxPriceAge'],)+tuple(m[k] for k in ('tbill','dex','agent'))
     cfgtype='(address,address,address,address,uint256,address,address,address)'
@@ -24,13 +30,13 @@ def main():
         d=json.loads(smoke.read_text());m['vault']=d['vault']
         entries.append(('vault','src/LeashVault.sol:LeashVault',['address',cfgtype,RULES_TYPE],[d['owner'],cfg,RULES]))
     forge=shutil.which('forge') or str(LOCAL/'foundry-bin/forge')
-    env=os.environ.copy();env['ETHERSCAN_API_KEY']=t.env['ETHERSCAN_API_KEY']
+    env=os.environ.copy();env['ETHERSCAN_API_KEY']=etherscan_key
     result={}
     for name,contract,types,args in entries:
         command=[forge,'verify-contract',m[name],contract,'--chain','97','--watch','--constructor-args','0x'+encode(types,args).hex()]
         try:
             r=subprocess.run(command,cwd=ROOT/'contracts',env=env,capture_output=True,text=True,timeout=90)
-            output=r.stdout+r.stderr
+            output=(r.stdout+r.stderr).replace(etherscan_key, '[redacted]')
             for value in t.env.values():
                 if value and len(value)>16 and not value.startswith('#'):output=output.replace(value,'[redacted]')
             (LOCAL/('verify-'+name+'.log')).write_text(output)

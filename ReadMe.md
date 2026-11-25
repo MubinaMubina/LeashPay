@@ -101,9 +101,18 @@ Vercel is the current preference, with Cloudflare still an option.
 | First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | On-chain path confirmed on 25 Nov with an agent-key smoke test; LLM integration pending |
 | Full demo works | Thu 26 Nov, 18:00 | All three demo moments, end to end; feature freeze | Upcoming |
 | Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded | Upcoming |
-| Submitted | Fri 27 Nov, 02:00 | Submitted on HackQuest to all four tracks | Upcoming |
+| Submitted | Fri 27 Nov, 09:00 | Submitted on HackQuest to all four tracks | Upcoming |
+
+## Run locally
+
+The Atlas relay is the runnable background service on these Builder A branches.
+From the repository root, use `make start`, `make status`, `make logs` and
+`make stop`. It checks USDT and USDC every minute while the Mac is awake.
+After a reboot, run `make start` again. `make help` lists setup and test commands.
 
 ## Documentation
+
+- [Builder A contract and relay review](docs/reviews/2026-11-25-builder-a.md)
 
 - [Vault ABI reference](docs/vault-abi.md): every function, event and error, with units, roles and the required tests
 - [Why the vault looks the way it does](docs/vault-design.md): the threat model, each design decision and its trade-off

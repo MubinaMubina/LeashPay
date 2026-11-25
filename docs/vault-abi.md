@@ -77,7 +77,7 @@ Read with `config()`. This is why the apps only need one address, `FACTORY_ADDRE
 
 #### `pay(address recipient, address token, uint256 amount, bytes32 ref)`
 
-Pays a recipient. This is the **only** function that sends value out of the vault to someone other than the owner, so every rule is checked here.
+Pays an allowlisted recipient. Every agent payout passes through this function. The owner can separately use `withdraw` to send funds to a chosen address.
 
 - **Caller:** agent only.
 - **Checks, in this order:** the first failing check decides the error.
@@ -102,6 +102,7 @@ Swaps between USDT and USDC inside the vault. The output stays in the vault.
 
 - **Caller:** agent or owner.
 - **Minimum output:** `amountIn * priceIn / priceOut * (10_000 - maxSlippageBps) / 10_000`, using the vault's own Atlas prices.
+- **Precision and price age:** both divisions round down in 18-decimal token base units. A dust-sized input can therefore have a minimum output of zero. The 2% setting measures the discount to the last accepted oracle observation. Changes in market value since that observation can exceed 2%. The demo deployment accepts observations up to 25 hours old.
 - **Checks, in this order:** `Unauthorized`, `VaultPaused`, `ZeroAmount`, `TokenNotAllowed` (either token, or `tokenIn == tokenOut`), `ExceedsSwapCap(amountIn, remaining)`, then `PriceFeedNotSet` / `InvalidPrice` / `StalePrice` for `tokenIn` and then `tokenOut`, `InsufficientBalance`, `SlippageTooHigh(minAmountOut, actualAmountOut)`.
 - **Counts toward** `dailySwapCap`.
 - **Emits:** `Swapped(tokenIn, tokenOut, amountIn, amountOut, minAmountOut)`.
@@ -143,6 +144,8 @@ Every function in this section reverts `Unauthorized(caller)` for anyone but the
 
 Anyone can call these. Window math is already applied, so the UI never recomputes daily or monthly totals.
 
+When reading the deployed implementation's ABI, unpack `recipientInfo` and `priceFeed` by position. The return names below describe the fields in order. The implementation leaves those multiple return values unnamed.
+
 | Function | Returns |
 |---|---|
 | `owner()` | The fixed owner |
@@ -160,10 +163,10 @@ Anyone can call these. Window math is already applied, so the UI never recompute
 
 Useful derived values for the dashboard:
 
-- Left to pay today: `rules().dailyCap - spentToday()`
-- Left for a recipient this month: `monthlyCap - spentThisMonth`
+- Left to pay today: `max(0, rules().dailyCap - spentToday())`
+- Left for a recipient this month: `max(0, monthlyCap - spentThisMonth)`. Lowering a cap preserves the spending already recorded in that bucket.
 - Next allowed payment to a recipient: `lastPaidAt + rules().cooldown` (any time if `lastPaidAt == 0`)
-- Vault balance per coin: `balanceOf(vault)` on the USDT and USDC tokens, plus `tbillValue()`
+- Liquid balances available for immediate payouts: read `balanceOf(vault)` separately on USDT and USDC. Report `tbillValue()` separately as USDT held in the T-bill. To show total USDT including that position, add it once to liquid USDT. The position must be redeemed before it can fund a payout.
 
 ## Events
 
@@ -191,7 +194,7 @@ Every error carries the values the agent and the UI need to explain it. The last
 | Error | Raised by | Message to show |
 |---|---|---|
 | `Unauthorized(address caller)` | Every gated function | "This wallet isn't allowed to do that." |
-| `VaultPaused()` | `pay`, `swap`, `sweepToTBill`, `redeemFromTBill` | "The vault is paused by its owner. Nothing goes out until it's resumed." |
+| `VaultPaused()` | `pay`, `swap`, `sweepToTBill`, `redeemFromTBill` | "The owner paused payments, swaps and T-bill operations. Owner withdrawals remain available." |
 | `ZeroAddress()` | `setRecipient`, `setPriceFeed`, `withdraw` | "An address is missing." |
 | `ZeroAmount()` | `pay`, `swap`, `sweepToTBill`, `redeemFromTBill`, `withdraw`, `setPriceFeed` | "The amount must be more than zero." |
 | `InvalidRef()` | `pay` | "Internal error: the payment has no plan reference." |
@@ -208,11 +211,11 @@ Every error carries the values the agent and the UI need to explain it. The last
 | `InvalidPrice(address token, int256 answer)` | `pay` (floor on), `swap`, `getPrice` | "The price feed for {token} returned an invalid price." |
 | `StalePrice(address token, uint256 updatedAt, uint256 maxAge)` | `pay` (floor on), `swap`, `getPrice` | "The {token} price is out of date (last update {updatedAt})." |
 | `PriceBelowFloor(address token, uint256 price, uint256 floor)` | `pay` | "{token} trades at {price}, below your {floor} floor, so paying in it is blocked." |
-| `SlippageTooHigh(uint256 minAmountOut, uint256 actualAmountOut)` | `swap` | "The swap would return {actualAmountOut}, below the minimum {minAmountOut}. Cancelled." |
+| `SlippageTooHigh(uint256 minAmountOut, uint256 actualAmountOut)` | `swap`, `sweepToTBill`, `redeemFromTBill` | For a swap, display the required and actual output in the output token. For a T-bill operation, display the minimum acceptable and projected combined treasury values in USDT. The operation reverted in both cases. |
 | `ExceedsSwapCap(uint256 amountIn, uint256 remaining)` | `swap` | "Only {remaining} of today's swap limit is left." |
 | `VaultAlreadyExists(address owner, address vault)` (factory) | `createVault` | "You already have a vault." Then open `vaultOf(owner)`. |
 
-One more error can appear but is not in the interface: OpenZeppelin's `ReentrancyGuardReentrantCall()`, inherited by the implementation. It only fires during a reentrancy attack. Builder B's final TypeScript ABI is generated from Builder A's compiled contract, so it includes it.
+The compiled vault ABI also includes OpenZeppelin's `ReentrancyGuardReentrantCall()` for nested protected calls and `SafeERC20FailedOperation(address token)` for token operation failures. A token, price feed, DEX or T-bill can propagate its own revert. The agent should retain a generic failure message for unknown errors.
 
 ## Rules, errors and required tests
 

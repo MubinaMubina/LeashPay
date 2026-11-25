@@ -13,20 +13,28 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--nodereal', action='store_true', help='Use NodeReal instead of the public RPC for historical state')
     args = parser.parse_args()
-    t = Testnet()
+    t = Testnet(roles=())
     if args.nodereal:
+        if not t.env.get('NODEREAL_API_KEY'):
+            raise RuntimeError('--nodereal requires NODEREAL_API_KEY for historical reads')
         t.rpc_url = 'https://bsc-testnet.nodereal.io/v1/' + t.env['NODEREAL_API_KEY']
         if int(t.rpc('eth_chainId', []), 16) != 97:
             raise RuntimeError('BSC testnet chain 97 required')
     m = t.manifest()
     proof = json.loads((ROOT / 'contracts/deployments/97-smoke.json').read_text())
     vault, recipient, token = proof['vault'], proof['recipient'], proof['token']
-    agent = t.accounts['AGENT'].address
+    agent = m['agent']
     ref = bytes.fromhex(proof['ref'][2:])
     amount = int(proof['amount'])
     receipt = t.receipt(proof['transactionHash'])
     block = int(receipt['blockNumber'], 16)
-    if receipt['from'].lower() != agent.lower() or receipt['to'].lower() != vault.lower():
+    expected_vault, = t.read(m['factory'], 'vaultOf(address)', ['address'], [m['deployer']],
+                             ['address'], block=receipt['blockNumber'])
+    if (m.get('status') != 'confirmed' or proof['chainId'] != 97 or block != proof['block']
+            or expected_vault.lower() != vault.lower() or proof['owner'].lower() != m['deployer'].lower()):
+        raise RuntimeError('Payment proof differs from the confirmed deployment')
+    if (receipt['transactionHash'].lower() != proof['transactionHash'].lower()
+            or receipt['from'].lower() != agent.lower() or receipt['to'].lower() != vault.lower()):
         raise RuntimeError('Unexpected payment sender or target')
     if token.lower() != m['usdt'].lower() or int(receipt['effectiveGasPrice'], 16) != 0:
         raise RuntimeError('Unexpected token or nonzero gas price')
@@ -45,8 +53,12 @@ def main():
     if balances[1] - balances[0] != amount or gas_balances[0] != gas_balances[1]:
         raise RuntimeError('Recipient transfer or free gas not proven')
 
-    # Simulate at a fixed recent block; these requests cannot broadcast a transaction.
-    check_block = t.rpc('eth_blockNumber', [])
+    # Replays use the original confirmed block even if vault rules change later.
+    evidence_file = ROOT / 'contracts/deployments/97-checks.json'
+    existing = json.loads(evidence_file.read_text()) if evidence_file.is_file() else None
+    if existing is not None and existing['simulationBlock'] < block:
+        raise RuntimeError('Recorded simulations predate the payment')
+    check_block = hex(existing['simulationBlock']) if existing is not None else receipt['blockNumber']
     unknown = '0x000000000000000000000000000000000000bAd0'
     cases = [
         ('duplicatePayment', recipient, ref, 'DuplicatePayment(bytes32,address)', ['bytes32', 'address'], [ref, recipient]),
@@ -74,7 +86,10 @@ def main():
                 'paidEventVerified': True, 'recipientBalanceDelta': str(balances[1] - balances[0]),
                 'agentBNBBefore': str(gas_balances[0]), 'agentBNBAfter': str(gas_balances[1]),
                 'effectiveGasPrice': '0', 'simulationBlock': int(check_block, 16), 'refusals': refusals}
-    save(ROOT / 'contracts/deployments/97-checks.json', evidence)
+    if existing is None:
+        save(evidence_file, evidence)
+    elif existing != evidence:
+        raise RuntimeError('Replayed proof differs from recorded payment checks')
     print('Confirmed payment, exact Paid event, zero agent gas cost, DuplicatePayment and RecipientNotAllowed.')
 
 

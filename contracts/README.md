@@ -92,18 +92,19 @@ Both relays preserve the timestamps of real Atlas mainnet observations. The free
 push feeds advertise a 24-hour heartbeat, so this deployment uses a 25-hour
 `maxPriceAge`. These prices are not instantaneous depeg signals. The latest
 mirrored observations are recorded in [97-atlas.json](deployments/97-atlas.json).
-Run the local reporter from the repository root for the hackathon:
+From the repository root, use `make start` to run the local reporter in the
+background. It checks both feeds every 60 seconds while the Mac is awake and
+online, and writes an update only for a newer valid observation. There is no
+scheduled shutdown. `make status` shows the process state and last completed check.
+`make logs` shows recent activity. `make stop` lets the current operation finish.
+During sleep polling pauses; after wake the process resumes. After a reboot use
+`make start` again. Starting twice keeps a single process. The deployer and agent
+signing keys are not required by the reporter.
 
-```sh
-.setup/testnet-venv/bin/python scripts/atlas_worker.py --interval 300 --until 2026-11-27T02:00:00+07:00
-```
+Use `make test` for local checks and `make verify` to replay the recorded
+payment and swap on BSC testnet. For a fresh checkout, run `make setup` and
+provide Foundry as described above.
 
-The worker checks each feed every five minutes while the Mac is awake and online.
-It signs a testnet update only for a newer observation. An unavailable feed is
-reported individually and retried within a minute. A local file lock prevents a
-second worker from starting. Inspect `.setup/atlas-worker-status.json` for the PID,
-last check, errors and source timestamps. Stop it with Ctrl-C in the foreground
-or send SIGTERM to its recorded PID. Restart with the same command after a reboot.
 If observations expire or fall below the owner's floor, payments fail closed.
 
 The mock DEX starts with 100,000 units of each faucet token. The demo vault was
