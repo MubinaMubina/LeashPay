@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import { DEMO_ATTACK_ADDRESS, FUNDING_TARGET, type DemoRecipient } from "./demo";
+import { DEMO_ATTACK_ADDRESS, FUNDING_MINIMUM, FUNDING_TARGET, type DemoRecipient } from "./demo";
 
 /**
  * Vault setup that can always be re-run (D10). Each pass reads what already exists and
@@ -46,7 +46,9 @@ export function planOnboarding(state: OnboardingState): OnboardingStep[] {
   }
   for (const coin of ["USDT", "USDC"] as const) {
     const balance = state.balances[coin];
-    if (balance < FUNDING_TARGET) steps.push({ kind: "fund", coin, amount: FUNDING_TARGET - balance });
+    // Payments spend the balance down; only a coin that runs low is topped up, so normal
+    // use never sends the owner back to setup.
+    if (balance < FUNDING_MINIMUM) steps.push({ kind: "fund", coin, amount: FUNDING_TARGET - balance });
   }
   return steps;
 }

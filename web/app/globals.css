@@ -132,6 +132,9 @@ code {
   cursor: pointer;
 }
 
+.btn {
+  white-space: nowrap;
+}
 .btn[disabled] {
   opacity: 0.6;
   cursor: default;
@@ -325,12 +328,18 @@ code {
 }
 .row {
   display: grid;
-  grid-template-columns: 1fr 140px 240px;
+  grid-template-columns: minmax(0, 1fr) 130px minmax(0, 230px);
   align-items: center;
   gap: 10px;
   padding: 10px 0;
   border-top: 1px solid var(--line);
   font-size: 16px;
+}
+.who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .who small {
   display: block;
@@ -342,6 +351,9 @@ code {
 }
 .badge {
   justify-self: end;
+  max-width: 100%;
+  text-align: right;
+  overflow-wrap: anywhere;
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 13px;
@@ -368,6 +380,7 @@ code {
 }
 .why {
   grid-column: 1 / -1;
+  overflow-wrap: anywhere;
   font-size: 13px;
   color: var(--ink-2);
 }

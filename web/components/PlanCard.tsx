@@ -137,8 +137,8 @@ export function PlanCard({
 
       {rows.map(({ payment, status }, i) => (
         <div className="row" key={i}>
-          <span className="who">
-            {payment.recipientName}
+          <span className="who" title={payment.recipientName}>
+            {/^0x[0-9a-fA-F]{40}$/.test(payment.recipientName) ? "Unknown address" : payment.recipientName}
             {payment.recipient && <small>{shortAddress(payment.recipient)}</small>}
           </span>
           <span className="amount">{formatAmount(payment.amount, payment.token)}</span>

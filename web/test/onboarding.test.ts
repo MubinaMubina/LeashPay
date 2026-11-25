@@ -1,6 +1,6 @@
 import { getAddress } from "viem";
 import { describe, expect, it } from "vitest";
-import { DEMO_ATTACK_ADDRESS, DEMO_RECIPIENTS, FUNDING_TARGET } from "@/lib/demo";
+import { DEMO_ATTACK_ADDRESS, DEMO_RECIPIENTS, FUNDING_MINIMUM, FUNDING_TARGET } from "@/lib/demo";
 import { assertNotAttackAddress, planOnboarding, type OnboardingState } from "@/lib/onboarding";
 
 const VAULT = getAddress("0x1df5aba120b14d2dd3878b876d9676c5a503b3d2");
@@ -47,11 +47,18 @@ describe("planOnboarding", () => {
     expect(kinds(half)).toEqual(["addToDirectory Marco", "allowRecipient Mai", `fund USDC ${FUNDING_TARGET}`]);
   });
 
-  it("raises a monthly cap that is below the demo's and tops balances up instead of overfilling", () => {
+  it("raises a monthly cap that is below the demo's", () => {
     const state = done();
     state.recipients[0] = { recipient: LINH, allowed: true, monthlyCap: 10n, inDirectory: true };
-    state.balances.USDT = FUNDING_TARGET - 950n * 10n ** 18n;
-    expect(kinds(state)).toEqual(["allowRecipient Linh", `fund USDT ${950n * 10n ** 18n}`]);
+    expect(kinds(state)).toEqual(["allowRecipient Linh"]);
+  });
+
+  it("leaves a balance spent down by payments alone, and tops up only a coin that runs low", () => {
+    const state = done();
+    state.balances.USDT = FUNDING_TARGET - 3n * 10n ** 18n;
+    expect(planOnboarding(state)).toEqual([]);
+    state.balances.USDC = FUNDING_MINIMUM - 1n;
+    expect(kinds(state)).toEqual([`fund USDC ${FUNDING_TARGET - FUNDING_MINIMUM + 1n}`]);
   });
 
   it("plans nothing once setup is complete, so re-running it is free", () => {
