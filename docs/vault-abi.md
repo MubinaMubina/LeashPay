@@ -2,7 +2,7 @@
 
 This is the complete reference for the vault interface that sits between LeashPay's smart contracts (Builder A) and its AI agent and web app (Builder B). The agent server and the dashboard call exactly these functions, listen for these events and show these errors. Builder A's `LeashVault` must implement every one of them.
 
-**Status:** the interface is written and compiles. It is proposed on branch `shared/vault-abi` and becomes frozen when that branch merges into `main` after Builder A's review. No contract is deployed yet.
+**Status:** frozen. Builder A reviewed and approved v1, and it was merged into `main` on 25 Nov 2026. The interfaces compile; no contract implements them or is deployed yet.
 
 - Source: [`contracts/src/interfaces/`](../contracts/src/interfaces/)
 - Frozen signature list: [`contracts/abi/frozen-signatures.txt`](../contracts/abi/frozen-signatures.txt)
@@ -281,7 +281,7 @@ Testnet only, on the mock USDT and USDC (standard 18-decimal ERC-20 tokens plus 
 
 ## Freeze and change rule
 
-These are frozen once `shared/vault-abi` merges:
+These are frozen:
 
 - the four files in [`contracts/src/interfaces/`](../contracts/src/interfaces/)
 - [`contracts/abi/frozen-signatures.txt`](../contracts/abi/frozen-signatures.txt), generated from them
@@ -301,4 +301,4 @@ These are not part of the freeze. They are the traps that would make an implemen
 
 ## Changelog
 
-- **v1** (2026-11-25): first version, proposed on branch `shared/vault-abi`. Frozen when merged into `main` after Builder A's review.
+- **v1** (2026-11-25): first version. Reviewed and approved by Builder A, then frozen by merging into `main`.

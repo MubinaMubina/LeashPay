@@ -90,13 +90,13 @@ Still to come, per the roadmap: the vault, factory, mock tokens and price relay 
 
 ## Roadmap
 
-| Gate | Time (Bangkok) | What must be true |
-|---|---|---|
-| ABI frozen | Wed 25 Nov, 20:30 | Both builders agree on the vault interface |
-| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet |
-| Full demo works | Thu 26 Nov, 18:00 | All three demo moments, end to end; feature freeze |
-| Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded |
-| Submitted | Fri 27 Nov, 02:00 | Submitted on HackQuest to all four tracks |
+| Gate | Time (Bangkok) | What must be true | Status |
+|---|---|---|---|
+| ABI frozen | Wed 25 Nov, 20:30 | Both builders agree on the vault interface | Done: approved and merged on 25 Nov |
+| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | Next |
+| Full demo works | Thu 26 Nov, 18:00 | All three demo moments, end to end; feature freeze | Upcoming |
+| Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded | Upcoming |
+| Submitted | Fri 27 Nov, 02:00 | Submitted on HackQuest to all four tracks | Upcoming |
 
 ## Documentation
 
