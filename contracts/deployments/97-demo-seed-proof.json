@@ -1,0 +1,113 @@
+{
+  "chainId": 97,
+  "vault": "0x1df5aba120b14d2dd3878b876d9676c5a503b3d2",
+  "owner": "0x9B3f81b1B6E8baecAbD47698A46Fa3684834A7c2",
+  "before": {
+    "block": 144842162,
+    "blockHash": "0x396cc9305f82927e60284816e1cc1aa64e8255128eeefc88590a17e6c6ed3d65",
+    "ownerNonce": 15,
+    "agentNonce": 5,
+    "vaultUSDTBaseUnits": "993000000000000000000",
+    "recipients": {
+      "0x47D948f58f4a495283BF0F74257E2F73D446D7Ea": {
+        "allowed": true,
+        "capBaseUnits": "1000000000000000000000",
+        "spentBaseUnits": "6000000000000000000",
+        "lastPaidAt": 1795631452,
+        "usdtBalanceBaseUnits": "6000000000000000000"
+      },
+      "0xEBe6E66c61DC57185F2c9a63bbc9914B85A4b13B": {
+        "allowed": false,
+        "capBaseUnits": "0",
+        "spentBaseUnits": "0",
+        "lastPaidAt": 0,
+        "usdtBalanceBaseUnits": "0"
+      },
+      "0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21": {
+        "allowed": false,
+        "capBaseUnits": "0",
+        "spentBaseUnits": "0",
+        "lastPaidAt": 0,
+        "usdtBalanceBaseUnits": "0"
+      }
+    }
+  },
+  "afterFirstRun": {
+    "block": 144842269,
+    "blockHash": "0x3a93c245d4c51a0e9a434787ba4dc421aac207d5789344a3f8f1a8d0eea37547",
+    "ownerNonce": 17,
+    "agentNonce": 5,
+    "vaultUSDTBaseUnits": "993000000000000000000",
+    "recipients": {
+      "0x47D948f58f4a495283BF0F74257E2F73D446D7Ea": {
+        "allowed": true,
+        "capBaseUnits": "1000000000000000000000",
+        "spentBaseUnits": "6000000000000000000",
+        "lastPaidAt": 1795631452,
+        "usdtBalanceBaseUnits": "6000000000000000000"
+      },
+      "0xEBe6E66c61DC57185F2c9a63bbc9914B85A4b13B": {
+        "allowed": true,
+        "capBaseUnits": "10000000000000000000",
+        "spentBaseUnits": "0",
+        "lastPaidAt": 0,
+        "usdtBalanceBaseUnits": "0"
+      },
+      "0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21": {
+        "allowed": true,
+        "capBaseUnits": "10000000000000000000",
+        "spentBaseUnits": "0",
+        "lastPaidAt": 0,
+        "usdtBalanceBaseUnits": "0"
+      }
+    }
+  },
+  "afterSecondRun": {
+    "block": 144842289,
+    "blockHash": "0x6b24fec564b87a2ae30905042dce1976a5073eb3a63654e96b79d405a354e4af",
+    "ownerNonce": 17,
+    "agentNonce": 5,
+    "vaultUSDTBaseUnits": "993000000000000000000",
+    "recipients": {
+      "0x47D948f58f4a495283BF0F74257E2F73D446D7Ea": {
+        "allowed": true,
+        "capBaseUnits": "1000000000000000000000",
+        "spentBaseUnits": "6000000000000000000",
+        "lastPaidAt": 1795631452,
+        "usdtBalanceBaseUnits": "6000000000000000000"
+      },
+      "0xEBe6E66c61DC57185F2c9a63bbc9914B85A4b13B": {
+        "allowed": true,
+        "capBaseUnits": "10000000000000000000",
+        "spentBaseUnits": "0",
+        "lastPaidAt": 0,
+        "usdtBalanceBaseUnits": "0"
+      },
+      "0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21": {
+        "allowed": true,
+        "capBaseUnits": "10000000000000000000",
+        "spentBaseUnits": "0",
+        "lastPaidAt": 0,
+        "usdtBalanceBaseUnits": "0"
+      }
+    }
+  },
+  "configurationTransactions": [
+    {
+      "name": "Marco",
+      "recipient": "0xEBe6E66c61DC57185F2c9a63bbc9914B85A4b13B",
+      "hash": "0x47756bdc5e6fc36bc647afc7b5798488c0116074bf20e6eb952aaadf4efbaec2",
+      "block": 144842213,
+      "gasFeeWei": "6839900000000"
+    },
+    {
+      "name": "Mai",
+      "recipient": "0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21",
+      "hash": "0xed9c35052970f1e054b297907a3fc22ecff6cdb89089e45cde14613ab9f3e7e2",
+      "block": 144842220,
+      "gasFeeWei": "6839900000000"
+    }
+  ],
+  "secondRunRecipientUpdates": 0,
+  "paymentsDuringBothRuns": 0
+}
