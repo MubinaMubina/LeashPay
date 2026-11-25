@@ -54,7 +54,7 @@ has `effectiveGasPrice = 0`, and the agent's BNB balance is unchanged across the
 payment block. Evidence is in [97-smoke.json](deployments/97-smoke.json) and the
 read-only receipt/event/revert checks in [97-checks.json](deployments/97-checks.json).
 This validates the contract and agent signing key; the LLM agent and web UI still
-need integration. Source publication on BscScan is pending explicit approval.
+need integration.
 
 From the repository root, create an isolated Python environment and install the
 operational dependencies:
@@ -80,10 +80,29 @@ uses the server-side NodeReal key with its
 to reread balances at the payment block, as well as validate the receipt and
 simulate both refusals. This command sends no transactions.
 
-After source-publication approval, `scripts/verify-testnet.py` uses the local
-Etherscan key to submit the seven deployed contracts and the demo vault. It stores
-only redacted logs locally and public verification outcomes in the deployments
-directory. No key belongs in a command-line argument or a committed file.
+### Contract sources on BscScan
+
+BscScan reports **Exact Match** for seven addresses, including the vault and
+factory. It reports **Similar Match** to the mUSDT implementation for mUSDC.
+We also checked the mUSDC creation bytecode and its own name and symbol
+against the [original deployment transaction](https://testnet.bscscan.com/tx/0x98969168dcbab3f92f5c148628e391af75ccd4521eab1dcb71e59886c39e2895).
+
+| Contract | BSC testnet address |
+|---|---|
+| Demo vault | [`0x1df5aba120b14d2dd3878b876d9676c5a503b3d2`](https://testnet.bscscan.com/address/0x1df5aba120b14d2dd3878b876d9676c5a503b3d2#code) |
+| Vault factory | [`0x80b66347374C6df4f157368497201aa63a371f60`](https://testnet.bscscan.com/address/0x80b66347374C6df4f157368497201aa63a371f60#code) |
+| Mock USDT | [`0x0081297D056308340E5501B5F2f076344A46aB44`](https://testnet.bscscan.com/address/0x0081297D056308340E5501B5F2f076344A46aB44#code) |
+| Mock USDC | [`0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421`](https://testnet.bscscan.com/address/0xAdbbBc9a09F258E6d0184D0d5EDb0688db15f421#code) |
+| Atlas USDT relay | [`0x1340584cB70f8C660dCe87E3a503ED9F0866B73C`](https://testnet.bscscan.com/address/0x1340584cB70f8C660dCe87E3a503ED9F0866B73C#code) |
+| Atlas USDC relay | [`0xCEfEAD2402C3F612187000258AFf686899370D82`](https://testnet.bscscan.com/address/0xCEfEAD2402C3F612187000258AFf686899370D82#code) |
+| Mock T-bill | [`0xC821eC5277Ff38601B44e59c6e756C23ddCB021d`](https://testnet.bscscan.com/address/0xC821eC5277Ff38601B44e59c6e756C23ddCB021d#code) |
+| Mock DEX | [`0x5BE028F7Ec3EB4Fc4CF8277e0501673F9c4E75E1`](https://testnet.bscscan.com/address/0x5BE028F7Ec3EB4Fc4CF8277e0501673F9c4E75E1#code) |
+
+Run `make verify-sources` to compare the published Solidity and compiler settings
+with this checkout. The check uses `ETHERSCAN_API_KEY` and `BSC_TESTNET_RPC_URL`.
+It reads the creation transactions for addresses marked **Similar Match** to check
+their original creation bytecode and constructor arguments. The per-address results
+are in [97-verification.json](deployments/97-verification.json).
 
 ## Oracle and demo limitations
 

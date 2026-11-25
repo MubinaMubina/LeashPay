@@ -88,9 +88,11 @@ These statuses are updated as each part lands.
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
 
+All eight deployed addresses now have readable source on BscScan Testnet. The demo vault
+and factory have exact matches. [Contract addresses and verification results](contracts/README.md#contract-sources-on-bscscan)
+
 Still to come, per the roadmap: the agent server
-(`agent/`), the dashboard and recipient page (`web/`), and the demo video. Source
-publication on BscScan awaits approval. Hosting will be reconfirmed at deployment;
+(`agent/`), the dashboard and recipient page (`web/`), and the demo video. Hosting will be reconfirmed at deployment;
 Vercel is the current preference, with Cloudflare still an option.
 
 ## Roadmap
