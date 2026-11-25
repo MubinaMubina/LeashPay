@@ -124,6 +124,22 @@ The second run sent zero transactions. Across its verification window, the
 owner nonce stayed at 17, the agent nonce stayed at 5, the vault held 993 mUSDT
 and all three payee records and balances matched. [Two-run testnet evidence](deployments/97-demo-seed-proof.json)
 
+### Three confirmed payroll receipts
+
+On 26 November 2026, `make pay-demo` sent 3 mUSDT from the demo vault on BSC
+testnet. Each row shows the recipient's mUSDT balance immediately before and
+after their payment block.
+
+| Recipient | Before (mUSDT) | After (mUSDT) | BscScan Testnet receipt |
+|---|---:|---:|---|
+| Linh | 6 | 7 | [Linh's payment](https://testnet.bscscan.com/tx/0x6592ffa6510ae5b982184553b6e9300e43865d747d98f0ba034fa28c5c3bdcf2) |
+| Marco | 0 | 1 | [Marco's payment](https://testnet.bscscan.com/tx/0x96679c473e4d8c7664dd41b7777b55d7ab302e9b7a2003dff7117cea567e4d59) |
+| Mai | 0 | 1 | [Mai's payment](https://testnet.bscscan.com/tx/0xcb8d96025d9c902d15b05c6737126b18e7b2df75c0bf903d43855da8125921cb) |
+
+`make verify-demo-payments` confirmed the vault's `Paid` event, the token's
+`Transfer` event, the 1 mUSDT balance increase and zero gas price for the agent
+on all three receipts.
+
 ### Contract sources on BscScan
 
 BscScan reports **Exact Match** for seven addresses, including the vault and

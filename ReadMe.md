@@ -118,6 +118,7 @@ See [demo setup and retries](contracts/README.md#prepare-the-three-demo-payees).
 Run `make pay-demo` to send the three real testnet payments and see each
 payee's balance increase and BscScan receipt. Run `make verify-demo-payments`
 to check the same batch again in read-only mode.
+[Confirmed payments to Linh, Marco and Mai on BscScan](contracts/README.md#three-confirmed-payroll-receipts)
 
 From the repository root, `make start` runs the Atlas relay in the current
 terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
