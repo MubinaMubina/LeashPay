@@ -24,7 +24,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm install
    npm run dev
    ```
-4. Open http://localhost:3000 and log in with your email.
+4. Open http://localhost:3000. Choose **Continue with email** to sign in or **Explore workspace** to browse the public dashboard. Returning signed-in owners go directly to the dashboard.
 5. Visitors and signed-in owners share **Payment chat**, **Recipients**, **Your vault**, and **History**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
