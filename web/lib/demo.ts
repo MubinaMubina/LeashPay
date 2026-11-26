@@ -38,8 +38,7 @@ export const FUNDING_TARGET = usd(20_000);
 export const FUNDING_MINIMUM = usd(2_000);
 
 /**
- * The only address the demo attack may target (D15). Setup refuses to allowlist it, so
- * the vault always answers RecipientNotAllowed and no money can move.
+ * The only address the demo attack may target (D15). The add-recipient form rejects it.
  */
 export const DEMO_ATTACK_ADDRESS = getAddress("0xbad5000000000000000000000000000000000bad");
 

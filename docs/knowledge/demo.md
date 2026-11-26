@@ -8,6 +8,18 @@
 - **Check sponsorship.** Run `make megafuel-status` before sending. The scheduled cutoff is **27 November 2026 at 09:00 Bangkok time**. For a later presentation, check the displayed expiry and remaining credit. If a provider is unavailable, show the recorded receipt and say when it happened. [Extend sponsorship or top up](../megafuel-jury.md)
 - **Choose how to show the payment.** Use the rehearsed app to show the owner signing. For a live terminal payment, run `make test-demo RUN=stage-01` in the second terminal from the repository root. A new run ID sends **1 mUSDT to Marco** if the checks pass. Reusing the ID on the same Mac with its saved transaction history checks the existing payment. The terminal submits directly as the agent. For a recorded walkthrough, simply open the two tabs above.
 
+## Demo wallets on BSC testnet
+
+New accounts start with an empty recipient list. For the walkthrough below, open **Recipients → Add recipient** and add Marco before rehearsal. To show the three-person payroll, add all three.
+
+| Recipient | Public wallet address | Country | Local currency |
+| --- | --- | --- | --- |
+| Linh | `0x47D948f58f4a495283BF0F74257E2F73D446D7Ea` | Vietnam | VND |
+| Marco | `0xEBe6E66c61DC57185F2c9a63bbc9914B85A4b13B` | Philippines | PHP |
+| Mai | `0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21` | Vietnam | VND |
+
+The owner chooses the spending cap for each contact. [Original testnet roster](../../contracts/deployments/97-demo-recipients.json)
+
 ## On stage
 
 | Moment | B shows | A says |

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { encodeFunctionData, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
-import { DEMO_RECIPIENTS } from "@/lib/demo";
 import { formatAmount } from "@/lib/plan-progress";
 import { AddRecipientForm } from "./RecipientForm";
 import { readRecipientAuthorization, withVaultLock, type RecipientBook } from "@/lib/recipient-book";
@@ -106,14 +105,10 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
         const status = await readRecipientAuthorization(vault, recipient.address);
         if (!status) throw new Error("Couldn’t read this recipient’s vault status. Try again.");
 
-        // Keep the cap when disabling a contact. For a zero-cap seeded contact, preserve its demo cap
-        // so onboarding can distinguish an explicit removal from a never-configured address.
-        const demo = DEMO_RECIPIENTS.find((entry) => entry.address.toLowerCase() === recipient.address.toLowerCase());
-        const cap = status.monthlyCap || demo?.monthlyCap || 0n;
-        if (status.allowed || cap !== status.monthlyCap) {
+        if (status.allowed) {
           setPhase({ kind: "remove", recipient, stage: "wallet" });
           await sendAndWait(vault, encodeFunctionData({
-            abi: leashVaultAbi, functionName: "setRecipient", args: [recipient.address, false, cap],
+            abi: leashVaultAbi, functionName: "setRecipient", args: [recipient.address, false, status.monthlyCap],
           }));
         }
 

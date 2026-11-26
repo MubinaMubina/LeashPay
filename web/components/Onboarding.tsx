@@ -4,14 +4,13 @@ import { Skeleton } from "./Skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address } from "viem";
 import { FACTORY_ADDRESS, explorerAddress, shortAddress } from "@/lib/chain";
-import { errorText, publicClient, useApi, useSendAndWait } from "@/lib/client";
-import { DEMO_RECIPIENTS, DEMO_RULES } from "@/lib/demo";
-import { faucetTokenAbi, leashVaultAbi, leashVaultFactoryAbi } from "@/lib/abi.generated";
-import { assertNotAttackAddress, describeStep, planOnboarding, type OnboardingState, type OnboardingStep } from "@/lib/onboarding";
+import { errorText, publicClient, useSendAndWait } from "@/lib/client";
+import { DEMO_RULES } from "@/lib/demo";
+import { faucetTokenAbi, leashVaultFactoryAbi } from "@/lib/abi.generated";
+import { describeStep, planOnboarding, type OnboardingState, type OnboardingStep } from "@/lib/onboarding";
 
-/** What's on chain and in the agent's directory right now. */
-async function readState(owner: Address, directory: { address: string }[]): Promise<OnboardingState> {
-  const inDirectory = (address: Address) => directory.some((entry) => entry.address.toLowerCase() === address.toLowerCase());
+/** Setup depends only on the owner's vault and its test-token balances. */
+async function readState(owner: Address): Promise<OnboardingState> {
   const vault = await publicClient.readContract({
     address: FACTORY_ADDRESS,
     abi: leashVaultFactoryAbi,
@@ -19,32 +18,14 @@ async function readState(owner: Address, directory: { address: string }[]): Prom
     args: [owner],
   });
   if (vault === zeroAddress) {
-    return {
-      vault: null,
-      recipients: DEMO_RECIPIENTS.map((recipient) => ({ recipient, allowed: false, monthlyCap: 0n, inDirectory: inDirectory(recipient.address) })),
-      balances: { USDT: 0n, USDC: 0n },
-    };
+    return { vault: null, balances: { USDT: 0n, USDC: 0n } };
   }
   const config = await publicClient.readContract({ address: FACTORY_ADDRESS, abi: leashVaultFactoryAbi, functionName: "config" });
-  const [infos, usdt, usdc] = await Promise.all([
-    Promise.all(
-      DEMO_RECIPIENTS.map((recipient) =>
-        publicClient.readContract({ address: vault, abi: leashVaultAbi, functionName: "recipientInfo", args: [recipient.address] }),
-      ),
-    ),
+  const [usdt, usdc] = await Promise.all([
     publicClient.readContract({ address: config.usdt, abi: erc20Abi, functionName: "balanceOf", args: [vault] }),
     publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [vault] }),
   ]);
-  return {
-    vault,
-    recipients: DEMO_RECIPIENTS.map((recipient, i) => ({
-      recipient,
-      allowed: infos[i][0],
-      monthlyCap: infos[i][1],
-      inDirectory: inDirectory(recipient.address),
-    })),
-    balances: { USDT: usdt, USDC: usdc },
-  };
+  return { vault, balances: { USDT: usdt, USDC: usdc } };
 }
 
 type Phase = { kind: "checking" } | { kind: "ready"; steps: OnboardingStep[] } | { kind: "running"; step: OnboardingStep } | { kind: "failed"; error: string };
@@ -54,18 +35,15 @@ type Phase = { kind: "checking" } | { kind: "ready"; steps: OnboardingStep[] } |
  * Re-running is always safe, so "Finish setup" after an interruption just continues.
  */
 export function Onboarding({ owner, onReady }: { owner: Address; onReady: (vault: Address) => void }) {
-  const api = useApi();
   const sendAndWait = useSendAndWait();
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const [vault, setVault] = useState<Address | null>(null);
 
   const load = useCallback(async (): Promise<OnboardingState> => {
-    const directory = await api<{ name: string; address: string }[]>("directory");
-    if (!directory.ok) throw new Error(directory.body.error ?? `The agent answered ${directory.status}.`);
-    const state = await readState(owner, directory.body);
+    const state = await readState(owner);
     setVault(state.vault);
     return state;
-  }, [api, owner]);
+  }, [owner]);
 
   const refresh = useCallback(async () => {
     setPhase({ kind: "checking" });
@@ -107,27 +85,11 @@ export function Onboarding({ owner, onReady }: { owner: Address; onReady: (vault
         return;
       }
       if (!current) throw new Error("The vault isn't there yet.");
-      if (step.kind === "allowRecipient") {
-        assertNotAttackAddress(step.recipient.address);
-        const data = encodeFunctionData({
-          abi: leashVaultAbi,
-          functionName: "setRecipient",
-          args: [step.recipient.address, true, step.recipient.monthlyCap],
-        });
-        await sendAndWait(current, data);
-        return;
-      }
-      if (step.kind === "addToDirectory") {
-        const { name, address, country, currency } = step.recipient;
-        const saved = await api("directory", { body: { name, address, country, currency } });
-        if (!saved.ok) throw new Error(saved.body.error ?? `The agent answered ${saved.status}.`);
-        return;
-      }
       const config = await publicClient.readContract({ address: FACTORY_ADDRESS, abi: leashVaultFactoryAbi, functionName: "config" });
       const token = step.coin === "USDT" ? config.usdt : config.usdc;
       await sendAndWait(token, encodeFunctionData({ abi: faucetTokenAbi, functionName: "mint", args: [current, step.amount] }));
     }
-  }, [api, load, onReady, sendAndWait]);
+  }, [load, onReady, sendAndWait]);
 
   return (
     <section className="card setup">
@@ -158,7 +120,7 @@ export function Onboarding({ owner, onReady }: { owner: Address; onReady: (vault
           <button className="btn" onClick={run}>
             {vault ? "Finish setup" : "Set up my vault"}
           </button>
-          <p className="hint small">Each step asks your wallet to confirm a transaction on BSC testnet.</p>
+          <p className="hint small">Your wallet confirms vault creation and test funding on BSC testnet. You can add recipients later.</p>
         </>
       )}
 

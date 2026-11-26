@@ -25,7 +25,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm run dev
    ```
 4. Open http://localhost:3000 and log in with your email.
-5. The first time, "Set up your vault" creates your vault, allows Linh, Marco and Mai, adds them to the agent's list and gets test USDT and USDC. Your wallet needs a little tBNB for gas: about 0.0003 tBNB for the whole setup.
+5. Select **Set up my vault**. On BSC testnet, a fresh account confirms three transactions: create the vault, fund it with test USDT, and fund it with test USDC. The owner's wallet needs a little tBNB for gas. Add your first contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
 
@@ -71,13 +71,9 @@ Type a request in English or French, or choose an action on the help card. “Ho
 
 ### Vault setup
 
-[`lib/onboarding.ts`](lib/onboarding.ts) reads what exists and runs only what's missing:
-1. create the vault;
-2. allow each recipient;
-3. add each to the agent's list;
-4. top up a stablecoin that falls below 2,000.
+Setup creates the owner's vault and tops up each test stablecoin that falls below 2,000. After an interruption, **Finish setup** reads the current balances and resumes the remaining steps. [Setup logic](lib/onboarding.ts)
 
-Closing a wallet popup halfway is fine: "Finish setup" continues. The demo attack's address can never be allowed.
+New accounts start with an empty recipient list. Returning owners keep their contacts and spending caps. For a rehearsal, add the people you need from the [demo wallet list](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet).
 
 ### Adding a recipient
 
