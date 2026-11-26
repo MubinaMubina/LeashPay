@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import { requestChatTurn, type ChatEntry } from "@/lib/chat-turn";
 import { useApi } from "@/lib/client";
@@ -8,9 +8,23 @@ import { DEMO_MESSAGES } from "@/lib/demo";
 import type { JournalEventJson, PlanJson } from "@/lib/plan-progress";
 import { BalanceCard, ChatCard, HelpCard, RecipientPreviewCard } from "./ChatCards";
 import { PlanCard } from "./PlanCard";
-import { AddRecipientForm, type RecipientBook } from "./Recipients";
+import type { RecipientBook } from "@/lib/recipient-book";
+import { AddRecipientForm } from "./RecipientForm";
+import { BrandMark } from "./Brand";
+import { Skeleton } from "./Skeleton";
 
-const CHIPS = [DEMO_MESSAGES.happyPath, DEMO_MESSAGES.attack, DEMO_MESSAGES.buildTest];
+const EXAMPLES = [
+  ["Freelancer payroll", DEMO_MESSAGES.happyPath],
+  ["Small test payout", DEMO_MESSAGES.buildTest],
+  ["Blocked payment demo", DEMO_MESSAGES.attack],
+];
+
+function AgentReply({ children }: { children: ReactNode }) {
+  return <div className="agent-reply">
+    <div className="agent-name"><BrandMark /> LeashPay agent</div>
+    {children}
+  </div>;
+}
 
 function rememberPlan(id: string) {
   const url = new URL(window.location.href);
@@ -38,6 +52,8 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
   const initialPlan = useRef<string | null | undefined>(undefined);
   const [text, setText] = useState("");
   const [thinking, setThinking] = useState(false);
+  const examples = useRef<HTMLDivElement>(null);
+  const [restoring, setRestoring] = useState(false);
   const pending = useRef<string[]>([]);
   const active = useRef(true);
   const sending = useRef(false);
@@ -58,6 +74,7 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
     const id = initialPlan.current;
     if (!id) return;
     let ignore = false;
+    setRestoring(true);
     void api<{ plan: PlanJson; events: JournalEventJson[] }>(`plans/${encodeURIComponent(id)}?owner=${owner}`)
       .then((found) => {
         if (ignore) return;
@@ -73,7 +90,8 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
         }
         setRestoreFailed(!found.ok);
         if (found.ok) setRestored(found.body);
-      }).catch(() => { if (!ignore) setRestoreFailed(true); });
+      }).catch(() => { if (!ignore) setRestoreFailed(true); })
+      .finally(() => { if (!ignore) setRestoring(false); });
     return () => { ignore = true; };
   }, [api, owner, restoreAttempt]);
 
@@ -115,21 +133,20 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
     setEntries((list) => [...list, entry]);
   }
 
-  function renderEntry(entry: ChatEntry, index: number) {
+  function renderReply(entry: Exclude<ChatEntry, { kind: "owner" }>, index: number) {
     switch (entry.kind) {
-      case "owner": return <div className="me" key={index}>{entry.text}</div>;
-      case "plan": return <PlanCard key={entry.plan.id} plan={entry.plan} initialEvents={entry.events} onSettled={onSettled} onAgentDown={onAgentDown} />;
-      case "help": return <HelpCard key={index} onAction={openAction} />;
-      case "balance": return <BalanceCard key={index} />;
-      case "recipients": return <RecipientPreviewCard key={index} book={book} onViewAll={onViewAll} />;
-      case "clarify": return <ChatCard key={index} title={entry.question}>{null}</ChatCard>;
-      case "notice": return <ChatCard key={index} title={entry.title}>{null}</ChatCard>;
-      case "error": return <div className="card error-card" role="alert" key={index}>{entry.text}</div>;
+      case "plan": return <PlanCard plan={entry.plan} initialEvents={entry.events} onSettled={onSettled} onAgentDown={onAgentDown} />;
+      case "help": return <HelpCard onAction={openAction} />;
+      case "balance": return <BalanceCard />;
+      case "recipients": return <RecipientPreviewCard book={book} onViewAll={onViewAll} />;
+      case "clarify": return <ChatCard title={entry.question}>{null}</ChatCard>;
+      case "notice": return <ChatCard title={entry.title}>{null}</ChatCard>;
+      case "error": return <div className="card error-card" role="alert">{entry.text}</div>;
       case "add": {
         const finish = (title: string) => setEntries((list) =>
           list.map((item, i) => i === index ? { kind: "notice", title } : item));
         return (
-          <ChatCard key={index} title="Add a recipient">
+          <ChatCard title="Add a recipient">
             <AddRecipientForm vault={vault} agent={agent} book={book} initial={entry.fields}
               onCancel={() => finish("Recipient addition cancelled")}
               onAdded={(name) => finish(`You can now pay ${name}`)} />
@@ -141,29 +158,42 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
 
   return (
     <section className="chat" aria-label="Payment chat">
-      <div className="log" ref={logRef} role="log" aria-label="Conversation">
+      <div className="log" ref={logRef} role="log" aria-label="Conversation with LeashPay">
+        {!entries.length && !restored && !restoring && !restoreFailed && (
+          <div className="empty">
+            <BrandMark />
+            <h2>Who do you want to pay?</h2>
+            <p className="hint">Tell me who and how much. You’ll review the plan before signing.</p>
+            <div className="chat-starters">
+              <button className="chip" onClick={() => { setText("Pay Linh 1 USDT"); composer.current?.focus(); }}>Try “Pay Linh 1 USDT”</button>
+              <button className="chip" onClick={() => setEntries([{ kind: "help" }])}>What can you do?</button>
+            </div>
+          </div>
+        )}
         {restored && (
           <>
             <div className="me">{restored.plan.message}</div>
-            <PlanCard plan={restored.plan} initialEvents={restored.events} onSettled={onSettled} onAgentDown={onAgentDown} />
+            <AgentReply><PlanCard plan={restored.plan} initialEvents={restored.events} onSettled={onSettled} onAgentDown={onAgentDown} /></AgentReply>
           </>
         )}
-        {restoreFailed && <ChatCard title="Couldn’t reopen the saved payment">
+        {restoreFailed && !restoring && <AgentReply><ChatCard title="Couldn’t reopen the saved payment">
           <button type="button" className="link" onClick={() => setRestoreAttempt((n) => n + 1)}>Retry</button>
-        </ChatCard>}
-        {entries.length === 0 && !restored && <HelpCard onAction={openAction} />}
-        {entries.map(renderEntry)}
-        {thinking && <p className="busy" role="status">Working on your request…</p>}
+        </ChatCard></AgentReply>}
+        {entries.map((entry, i) => entry.kind === "owner"
+          ? <div className="me" key={i}>{entry.text}</div>
+          : <AgentReply key={i}>{renderReply(entry, i)}</AgentReply>)}
+        {(thinking || restoring) && <AgentReply>
+          <Skeleton variant="plan" label={restoring ? "Loading saved plan" : "Working on your request"} />
+        </AgentReply>}
       </div>
       <div className="composer-wrap">
-        <div className="chips">
-          {CHIPS.map((chip) => (
-            <button key={chip} className="chip" onClick={() => { setText(chip); composer.current?.focus(); }} title={chip}>
-              {chip.length > 48 ? `${chip.slice(0, 46)}…` : chip}
-            </button>
-          ))}
-        </div>
         <form className="composer" onSubmit={(event) => { event.preventDefault(); void send(text); }}>
+          <button type="button" className="examples-toggle" popoverTarget="chat-examples" aria-label="Example requests" title="Example requests">+</button>
+          <div popover="auto" id="chat-examples" className="examples-menu" ref={examples}>
+            {EXAMPLES.map(([label, message]) => (
+              <button type="button" key={label} onClick={() => { setText(message); examples.current?.hidePopover(); composer.current?.focus(); }}>{label}</button>
+            ))}
+          </div>
           <input ref={composer} value={text} maxLength={2000} onChange={(e) => setText(e.target.value)}
             aria-label="Message the agent" placeholder="Message the agent…" readOnly={thinking} />
           <button className="btn" type="submit" disabled={thinking || !text.trim()}>Send</button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "./Skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address } from "viem";
 import { FACTORY_ADDRESS, explorerAddress, shortAddress } from "@/lib/chain";
@@ -145,7 +146,7 @@ export function Onboarding({ owner, onReady }: { owner: Address; onReady: (vault
         )}
       </p>
 
-      {phase.kind === "checking" && <p className="hint">Checking what's already set up…</p>}
+      {phase.kind === "checking" && <Skeleton label="Checking your vault setup" />}
 
       {phase.kind === "ready" && (
         <>

@@ -49,6 +49,7 @@ The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/a
 | `GET /api/directory` | `GET /directory?owner=` |
 | `POST /api/directory` | `POST /directory` |
 | `POST /api/chat` | `POST /chat` |
+| `POST /api/directory/remove` | `POST /directory/remove` with the session owner and recipient address |
 | `POST /api/plans` | `POST /plans` |
 | `GET /api/plans/:id` | `GET /plans/:id` |
 | `GET /api/plans/:id/approval` | `GET /plans/:id/approval` |
@@ -80,13 +81,15 @@ Closing a wallet popup halfway is fine: "Finish setup" continues. The demo attac
 
 ### Adding a recipient
 
-The vault column lists the owner's recipients from the agent's directory, each with the vault's own view of it (`recipientInfo`): the monthly cap, or "not in vault" when the vault would refuse a payment. "+ Add recipient" opens a form: name, wallet address, country, currency (VND, PHP, THB or USD) and monthly cap.
+The **Recipients** tab searches the owner's directory by name and shows ten matches per page. The app reads vault limits for that page. Select **Add recipient** to enter a name, wallet address, country, currency and monthly cap. Switching back to **Payment chat** preserves the conversation and the message draft.
+
 - **Two writes, vault first:** the owner's wallet sends `setRecipient(address, true, monthlyCap)`, then the app saves the name to the agent's directory. The agent's key can't do the first write, which is why "send all funds to 0xBAD…" is refused.
 - **Interrupted adds:** if the wallet popup is closed or the agent is down between the two writes, submitting the same recipient again finishes it.
 - If the vault already allows the address at the requested cap, the form can save the name or update the reviewed country and currency directly. It checks for competing directory edits before saving.
 - The form rejects conflicting name/address pairs, reserved addresses and invalid caps before opening a wallet prompt. The chat leaves the cap blank when it cannot read the requested amount. [Recipient validation](lib/recipients.ts)
 - **Right after adding**, the owner can type "Pay Ramon 1": the agent reads the directory for each plan.
-- **Not built:** removing a recipient or changing a cap from the app. The recipient page shows local value only for the demo recipients; for a new recipient it shows the coin amounts.
+- **Deletion:** select the trash icon beside a recipient and confirm. The owner’s wallet disables future payments, then the agent removes the directory entry. A retry checks the vault before requesting another signature. Previous receipts stay available.
+- Changing a cap requires a separate vault update. The recipient page shows local value only for the demo recipients; for a new recipient it shows the coin amounts.
 
 ### The live attack
 
@@ -99,7 +102,7 @@ For a plan whose only payable row is the demo address `0xbAd5…0bAd`, the card 
 
 The vault column has the owner's depeg limit: a slider from 0% to 20% (default 5%), kept in this browser for each vault and sent with each new plan as `depegThreshold`. It is the agent's policy, not a vault rule, so changing it needs no transaction. If the browser blocks storage, the limit still works until the page reloads.
 
-Each payment plan's card shows the agent's Cournot reading: the exact claim, the probability as a bar with the owner's limit marked, the sources with links, the date and time of the reading in UTC, the market id and Cournot's request id. Below it, labeled "LeashPay's choice", is the agent's sentence about which coin it pays in, word for word as it appears in the text the owner signs. When Cournot is unavailable, the card says why and the plan keeps its coins. How the agent decides is in the [agent README](../agent/README.md#depeg-guard-cournot).
+Open **Checks & notes → Stablecoin risk** on a payment plan to see the agent's Cournot reading: the exact claim, the probability as a bar with the owner's limit marked, the sources with links, the date and time of the reading in UTC, the market id and Cournot's request id. Below it, labeled "LeashPay's choice", is the agent's sentence about which coin it pays in, word for word as it appears in the text the owner signs. When Cournot is unavailable, the card says why and the plan keeps its coins. How the agent decides is in the [agent README](../agent/README.md#depeg-guard-cournot).
 
 ### The recipient page
 
@@ -111,7 +114,7 @@ Each payment plan's card shows the agent's Cournot reading: the exact claim, the
 
 ### Agent memory on the plan
 
-When the agent's memory is on, each plan card has an "Agent memory" box: the Living Brain notes the agent recalled for this message, "Nothing recalled for this message.", or why memory was unavailable. If saving new memories is failing (on 26 Nov: HTTP 402, the project's prepaid balance is empty), the box says so. How the agent uses memory is in the [agent README](../agent/README.md#memory-living-brain).
+When the agent's memory is on, each plan card offers **Checks & notes → Recalled notes** with the agent’s memory details: the Living Brain notes the agent recalled for this message, "Nothing recalled for this message.", or why memory was unavailable. If saving new memories is failing (on 26 Nov: HTTP 402, the project's prepaid balance is empty), the box says so. How the agent uses memory is in the [agent README](../agent/README.md#memory-living-brain).
 
 ### Local-currency amounts on the plan
 

@@ -4,12 +4,13 @@ import { parseVaultBalances, recipientPage, type VaultBalances } from "@/lib/cha
 import { useApi } from "@/lib/client";
 import { formatAmount } from "@/lib/plan-progress";
 import type { RecipientBook } from "@/lib/recipient-book";
+import { Skeleton } from "./Skeleton";
 import styles from "./ChatCards.module.css";
 
 export function ChatCard({ title, detail, children }: { title: string; detail?: ReactNode; children: ReactNode }) {
   const id = useId();
   return (
-    <section className={styles.card} aria-labelledby={id}>
+    <section className="card plan" aria-labelledby={id}>
       <header className={styles.header}>
         <h3 id={id}>{title}</h3>
         {detail && <span className={styles.count} aria-live="polite">{detail}</span>}
@@ -46,7 +47,7 @@ function ReadFailure({ message, onRetry }: { message: string; onRetry: () => voi
   return (
     <div className={styles.readFailure}>
       <p role="status">{message}</p>
-      <button className={styles.secondary} type="button" onClick={onRetry}>Retry</button>
+      <button className="chip" type="button" onClick={onRetry}>Retry</button>
     </div>
   );
 }
@@ -73,18 +74,18 @@ export function BalanceCard() {
   return (
     <ChatCard title="Vault balance">
       {balances === undefined ? (
-        <p className={styles.status} role="status">Reading your vault…</p>
+        <Skeleton label="Reading your vault" />
       ) : balances === null ? (
         <ReadFailure message="Couldn’t read your vault balance." onRetry={() => setAttempt((count) => count + 1)} />
       ) : (
-        <dl className={styles.balances}>
+        <dl className={`balances ${styles.balances}`}>
           {(["USDT", "USDC"] as const).map((token) => (
-            <div className={styles.holding} key={token}>
+            <div className="kv" key={token}>
               <dt>{token}</dt>
               <dd>{formatAmount(balances[token], "").trim()}</dd>
             </div>
           ))}
-          <div className={styles.tbills}>
+          <div className={`kv ${styles.tbills}`}>
             <dt>Held in T-bills</dt>
             <dd>{formatAmount(balances.tbillValue, "USDT")}</dd>
           </div>
@@ -120,7 +121,7 @@ export function RecipientPreviewCard({ book, onViewAll }: { book: RecipientBook;
   const retry = () => setAttempt((count) => count + 1);
   return (
     <ChatCard title="Who you can pay" detail={count}>
-      {read === "loading" && <p className={styles.status} role="status">Checking your recipients…</p>}
+      {read === "loading" && <Skeleton label="Checking your recipients" />}
       {read !== "loading" && !preview && <ReadFailure message="Couldn’t read your recipients." onRetry={retry} />}
       {preview && (
         <>
@@ -143,11 +144,11 @@ export function RecipientPreviewCard({ book, onViewAll }: { book: RecipientBook;
         </>
       )}
       <footer className={styles.footer}>
-        <button className={styles.primary} type="button" onClick={onViewAll}>View all recipients</button>
+        <button className="btn" type="button" onClick={onViewAll}>View all recipients</button>
         {preview && hasPages && (
           <div className={styles.pager} role="group" aria-label="Recipient pages">
-            <button className={styles.secondary} type="button" disabled={preview.page === 0} onClick={() => setPage(preview.page - 1)}>Previous</button>
-            <button className={styles.secondary} type="button" disabled={!preview.hasNext} onClick={() => setPage(preview.page + 1)}>Next</button>
+            <button className="chip" type="button" disabled={preview.page === 0} onClick={() => setPage(preview.page - 1)}>Previous</button>
+            <button className="chip" type="button" disabled={!preview.hasNext} onClick={() => setPage(preview.page + 1)}>Next</button>
           </div>
         )}
       </footer>

@@ -68,6 +68,14 @@ export class RecipientDirectory {
     return next;
   }
 
+  remove(owner: Address, address: Address): RecipientEntry[] {
+    const all = this.read();
+    const previous = all[owner] ?? [];
+    const next = previous.filter(entry => entry.address !== address);
+    if (next.length !== previous.length) this.write({ ...all, [owner]: next });
+    return next;
+  }
+
   private read(): Record<string, RecipientEntry[]> {
     if (!existsSync(this.file)) return {};
     let raw: unknown;

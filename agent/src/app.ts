@@ -226,6 +226,16 @@ export function createApp(deps: AppDeps) {
     return c.json(saved, 201);
   });
 
+  app.post("/directory/remove", async (c) => {
+    const { owner, address } = input(DirectoryBody.pick({ owner: true, address: true }), await readJson(c));
+    const vault = await deps.gateway.vaultOf(owner);
+    if (!vault) return c.json({ error: "This owner has no vault." }, 404);
+    if (await deps.gateway.isAllowed(vault, address)) {
+      return c.json({ error: "The vault still allows this recipient. Confirm removal in your wallet first." }, 409);
+    }
+    return c.json(deps.directory.remove(owner, address));
+  });
+
   app.get("/vaults/:owner", async (c) => {
     const owner = input(AddressSchema, c.req.param("owner"));
     const vault = await deps.gateway.vaultOf(owner);

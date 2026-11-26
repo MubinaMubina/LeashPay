@@ -25,9 +25,9 @@ export function useApi() {
   const { getAccessToken } = usePrivy();
   return useCallback(
     async <T = unknown>(path: string, init: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<ApiResult<T>> => {
-      const token = await getAccessToken();
       let response: Response;
       try {
+        const token = await getAccessToken();
         response = await fetch(`/api/${path}`, {
           method: init.method ?? (init.body === undefined ? "GET" : "POST"),
           headers: {

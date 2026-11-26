@@ -54,7 +54,7 @@ export type Checked = { ok: true; recipient: NewRecipient } | { ok: false; error
 const fail = (error: string): Checked => ({ ok: false, error });
 
 /** Checks the form before any wallet popup, with a message the owner can act on. */
-export function checkNewRecipient(form: RecipientForm, existing: ListedRecipient[], reserved: Reserved): Checked {
+export function checkNewRecipient(form: RecipientForm, existing: DirectoryEntry[], reserved: Reserved): Checked {
   const name = form.name.trim();
   if (!name) return fail("Give the recipient a name, so you can say \"Pay Ramon 50\".");
   if (name.length > NAME_MAX) return fail(`Keep the name under ${NAME_MAX} characters.`);
@@ -92,6 +92,8 @@ export function checkNewRecipient(form: RecipientForm, existing: ListedRecipient
   return { ok: true, recipient: { name, address, ...(country ? { country } : {}), currency, monthlyCap } };
 }
 
+export type DirectoryEntry = Omit<ListedRecipient, "onChain">;
+
 export interface RecipientReview {
   recipient: NewRecipient;
   storedDetails?: Pick<ListedRecipient, "country" | "currency">;
@@ -101,7 +103,7 @@ export interface RecipientReview {
 }
 
 interface RecipientReads {
-  directory: () => Promise<ListedRecipient[] | null>;
+  directory: () => Promise<DirectoryEntry[] | null>;
   authorization: (address: Address) => Promise<ListedRecipient["onChain"]>;
 }
 
@@ -113,7 +115,7 @@ export async function reviewRecipient(form: RecipientForm, reserved: Reserved, r
   if (!checked.ok) throw new Error(checked.error);
   const { recipient } = checked;
   const entry = directory.find((r) => r.address.toLowerCase() === recipient.address.toLowerCase());
-  const authorization = entry ? entry.onChain : await reads.authorization(recipient.address);
+  const authorization = await reads.authorization(recipient.address);
   if (!authorization) throw new Error("Couldn't verify this address in your vault. Try again.");
   const { allowed, monthlyCap } = authorization;
   const needsWallet = !allowed || monthlyCap !== recipient.monthlyCap;

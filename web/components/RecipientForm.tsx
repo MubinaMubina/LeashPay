@@ -2,41 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { encodeFunctionData, formatUnits, getAddress, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
-import { readRecipientAuthorization, type RecipientBook } from "@/lib/recipient-book";
+import { readRecipientAuthorization, withVaultLock, type RecipientBook } from "@/lib/recipient-book";
 import { CURRENCIES, reviewRecipient, saveReviewedRecipient, type RecipientForm, type RecipientReview } from "@/lib/recipients";
 
 const EMPTY: RecipientForm = { name: "", address: "", country: "", currency: "VND", monthlyCap: "1000" };
-const pendingVaults = new Set<string>();
-
-/** Hold the lock through confirmation and the directory save. Web Locks also cover other tabs. */
-async function withVaultLock<T>(vault: Address, action: () => Promise<T>): Promise<T> {
-  const key = `leashpay.recipient.${vault.toLowerCase()}`;
-  const busy = "Another recipient change is in progress for this vault. Try again once it finishes.";
-  if (navigator.locks) {
-    return navigator.locks.request(key, { ifAvailable: true }, (lock) => {
-      if (!lock) throw new Error(busy);
-      return action();
-    });
-  }
-  if (pendingVaults.has(key)) throw new Error(busy);
-  pendingVaults.add(key);
-  try {
-    return await action();
-  } finally {
-    pendingVaults.delete(key);
-  }
-}
-
 interface Props {
   vault: Address;
   agent: Address | null | undefined;
   book: RecipientBook;
   initial?: Partial<RecipientForm>;
+  onBusyChange?: (busy: boolean) => void;
   onCancel: () => void;
   onAdded: (name: string) => void;
 }
 
-export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdded }: Props) {
+export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, onCancel, onAdded }: Props) {
   const api = useApi();
   const owner = useOwnerWallet()?.address;
   const sendAndWait = useSendAndWait();
@@ -63,6 +43,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
     if (!owner) return setError("Your wallet isn't ready yet.");
     if (agent === undefined) return setError("Still reading your vault. Try again in a moment.");
     working.current = true;
+    onBusyChange?.(true);
     setBusy("Checking…");
     setError(null);
     function ensureOpen() {
@@ -71,7 +52,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
     try {
       const reserved = { owner: getAddress(owner), vault, agent };
       const inspect = () => reviewRecipient(form, reserved, {
-        directory: book.refresh,
+        directory: book.readDirectory,
         authorization: (address) => readRecipientAuthorization(vault, address),
       });
       if (!review) {
@@ -96,8 +77,8 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
         },
       }));
       if (!mounted.current) return;
+      book.changed();
       if (result.kind === "added") {
-        await book.refresh();
         if (mounted.current) onAdded(review.recipient.name);
       } else {
         setReview(result.review);
@@ -110,6 +91,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
       if (mounted.current) setError(errorText(err));
     } finally {
       working.current = false;
+      if (mounted.current) onBusyChange?.(false);
       if (mounted.current) setBusy(null);
     }
   }
@@ -153,7 +135,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
         </div>
       ) : (
         <>
-          <label>Name<input {...field("name")} placeholder="Ramon" maxLength={60} /></label>
+          <label>Name<input autoFocus={!initial} {...field("name")} placeholder="Ramon" maxLength={60} /></label>
           <label>Wallet address<input {...field("address")} placeholder="0x…" spellCheck={false} autoComplete="off" /></label>
           <div className="add-row">
             <label>Country<input {...field("country")} placeholder="PH" maxLength={60} /></label>
@@ -164,6 +146,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
           <label>Monthly cap (USDT or USDC per 30 days)<input {...field("monthlyCap")} inputMode="decimal" /></label>
         </>
       )}
+      {!review && <p className="sub">Your wallet confirms who can receive payments from this vault.</p>}
       {error && <p className="kill-error" role="alert">{error}</p>}
       <div className="add-actions">
         <button className="btn" type="submit" disabled={Boolean(busy)}>{busy ?? submitLabel}</button>

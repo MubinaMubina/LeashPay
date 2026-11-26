@@ -1,5 +1,7 @@
 "use client";
 
+import { Brand } from "@/components/Brand";
+import { Skeleton } from "@/components/Skeleton";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
@@ -66,19 +68,14 @@ export default function RecipientPage() {
   return (
     <main className="phone">
       <header className="phone-head">
-        <div className="brand">
-          <div className="mark" aria-hidden>
-            L
-          </div>
-          LeashPay
-        </div>
+        <Brand />
         <span className="net">BSC testnet</span>
       </header>
 
       <h1>{known ? `Hi ${known.name}` : "Payments received"}</h1>
       <p className="hint">{shortAddress(address)}</p>
 
-      {load.kind === "loading" && <p className="busy">Looking up your payments…</p>}
+      {load.kind === "loading" && <Skeleton label="Looking up your payments" variant="receipt" />}
 
       {load.kind === "failed" && (
         <div className="error-card">

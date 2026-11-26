@@ -63,6 +63,7 @@ describe("route table", () => {
       "GET /api/directory",
       "POST /api/directory",
       "POST /api/chat",
+      "POST /api/directory/remove",
       "POST /api/plans",
       "GET /api/plans/:id",
       "GET /api/plans/:id/approval",
@@ -92,6 +93,7 @@ describe("owner-taking routes", () => {
     { method: "GET", path: "directory", expectUrl: `${AGENT_URL}/directory?owner=${OWNER}` },
     { method: "POST", path: "directory", body: { name: "Mai", address: STRANGER }, expectBodyOwner: true },
     { method: "POST", path: "chat", body: { message: "25 USDT", context: ["Pay Linh"] }, expectBodyOwner: true },
+    { method: "POST", path: "directory/remove", body: { address: STRANGER }, expectBodyOwner: true },
     { method: "POST", path: "plans", body: { message: "Pay Linh 1" }, expectBodyOwner: true },
   ] as const;
 

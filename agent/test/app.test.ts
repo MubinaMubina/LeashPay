@@ -457,6 +457,19 @@ describe("the recipient directory", () => {
     expect((await api.request("/directory", json({ owner: OWNER, address: ATTACKER, name, createOnly: true }))).status).toBe(409);
   });
 
+  it("removes only the owner's revoked recipient and tolerates retries", async () => {
+    const api = app();
+    await api.request("/directory", json({ owner: ATTACKER, name: "Other contact", address: LINH }));
+    const remove = () => api.request("/directory/remove", json({ owner: OWNER, address: LINH.toLowerCase() }));
+    gateway.allowed.add(LINH);
+    expect((await remove()).status).toBe(409);
+    expect(await (await api.request(`/directory?owner=${OWNER}`)).json()).toHaveLength(1);
+    gateway.allowed.delete(LINH);
+    expect(await (await remove()).json()).toEqual([]);
+    expect(await (await remove()).json()).toEqual([]);
+    expect(await (await api.request(`/directory?owner=${ATTACKER}`)).json()).toEqual([{ name: "Other contact", address: LINH }]);
+  });
+
   it("keeps each owner's recipients separate", async () => {
     const api = app();
     const added = await api.request("/directory", json({ owner: OWNER, name: "Marco", address: MARCO.toLowerCase(), currency: "php" }));
