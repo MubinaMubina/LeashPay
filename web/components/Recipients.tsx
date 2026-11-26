@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { encodeFunctionData, getAddress, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, publicClient, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
+import { DEMO_RECIPIENTS } from "@/lib/demo";
 import { formatAmount } from "@/lib/plan-progress";
 import { CURRENCIES, checkNewRecipient, type ListedRecipient, type NewRecipient, type RecipientForm } from "@/lib/recipients";
 
@@ -19,7 +20,8 @@ type Phase =
   | { kind: "checking" }
   | { kind: "vault"; name: string }
   | { kind: "directory"; name: string }
-  | { kind: "added"; name: string };
+  | { kind: "added" | "removed"; name: string }
+  | { kind: "remove"; recipient: DirectoryEntry; stage: "review" | "checking" | "wallet" | "directory"; error?: string };
 
 const EMPTY: RecipientForm = { name: "", address: "", country: "", currency: "VND", monthlyCap: "1000" };
 
@@ -52,8 +54,23 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
   const [page, setPage] = useState(0);
   const [checks, setChecks] = useState(new Map<Address, ListedRecipient["onChain"]>());
   const scrollArea = useRef<HTMLDivElement>(null);
-  const addLock = useRef(false);
-  const showForm = phase.kind !== "closed" && phase.kind !== "added";
+  const mutationLock = useRef(false);
+  const returnFocus = useRef<string | null>(null);
+  const showList = phase.kind === "closed" || phase.kind === "added" || phase.kind === "removed";
+
+  useEffect(() => {
+    if (showList && returnFocus.current) {
+      const target = document.getElementById(returnFocus.current) ?? document.getElementById("add-recipient");
+      target?.focus();
+      returnFocus.current = null;
+    }
+  }, [showList]);
+
+  function backToList() {
+    if (mutationLock.current) return;
+    setForm(EMPTY);
+    setPhase({ kind: "closed" });
+  }
 
   const load = useCallback(async () => {
     const directory = await api<DirectoryEntry[]>("directory");
@@ -77,7 +94,7 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
 
   useEffect(() => {
     scrollArea.current?.scrollTo({ top: 0 });
-    if (showForm || !visible.length) return;
+    if (!showList || !visible.length) return;
     let cancelled = false;
     setChecks(new Map());
     // Coalesce keystrokes before contacting the vault. Names render immediately.
@@ -87,12 +104,12 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
       if (!cancelled) setChecks(new Map(entries));
     }, 150);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [visible, vault, showForm]);
+  }, [visible, vault, showList]);
 
   const add = async () => {
-    if (addLock.current) return;
+    if (mutationLock.current) return;
     if (!owner || agent === undefined) return setPhase({ kind: "open", error: "Your vault is still loading. Try again in a moment." });
-    addLock.current = true;
+    mutationLock.current = true;
     setPhase({ kind: "checking" });
     try {
       const current = await load();
@@ -123,17 +140,49 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
       }
       await load();
       setForm(EMPTY);
-      setQuery(name);
-      setPage(0);
       setPhase({ kind: "added", name });
     } catch (err) {
       setPhase({ kind: "open", error: errorText(err) });
     } finally {
-      addLock.current = false;
+      mutationLock.current = false;
     }
   };
 
-  const busy = phase.kind === "checking" || phase.kind === "vault" || phase.kind === "directory";
+  const remove = async (recipient: DirectoryEntry) => {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setPhase({ kind: "remove", recipient, stage: "checking" });
+    try {
+      const status = await readRecipient(vault, recipient.address);
+      if (!status) throw new Error("Couldn’t read this recipient’s vault status. Try again.");
+
+      // Keep the cap when disabling a contact. For a zero-cap seeded contact, preserve its demo cap
+      // so onboarding can distinguish an explicit removal from a never-configured address.
+      const demo = DEMO_RECIPIENTS.find((entry) => entry.address.toLowerCase() === recipient.address.toLowerCase());
+      const cap = status.monthlyCap || demo?.monthlyCap || 0n;
+      if (status.allowed || cap !== status.monthlyCap) {
+        setPhase({ kind: "remove", recipient, stage: "wallet" });
+        await sendAndWait(vault, encodeFunctionData({
+          abi: leashVaultAbi, functionName: "setRecipient", args: [recipient.address, false, cap],
+        }));
+      }
+
+      setPhase({ kind: "remove", recipient, stage: "directory" });
+      const saved = await api<DirectoryEntry[]>("directory/remove", { body: { address: recipient.address } });
+      if (!saved.ok) {
+        throw new Error(`Couldn’t finish removing this recipient from the directory. ${saved.body.error || "Try again."}`);
+      }
+      setList(saved.body);
+      setLoadError(null);
+      setPhase({ kind: "removed", name: recipient.name });
+    } catch (err) {
+      setPhase({ kind: "remove", recipient, stage: "review", error: errorText(err) });
+    } finally {
+      mutationLock.current = false;
+    }
+  };
+
+  const busy = phase.kind === "checking" || phase.kind === "vault" || phase.kind === "directory" || (phase.kind === "remove" && phase.stage !== "review");
   const field = (key: keyof RecipientForm) => ({
     value: form[key],
     disabled: busy,
@@ -143,20 +192,28 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
   return (
     <>
       <header className="directory-head">
-        <h1>{showForm ? "Add recipient" : "Recipients"}</h1>
-        {!showForm && <button className="btn" onClick={() => setPhase({ kind: "open" })}>Add recipient</button>}
+        {!showList && <button type="button" autoFocus={phase.kind === "remove"} className="back-to-recipients" disabled={busy}
+          aria-label="Back to recipients" title="Back to recipients" onClick={backToList}>←</button>}
+        <h1>{showList ? "Recipients" : phase.kind === "remove" ? "Delete recipient" : "Add recipient"}</h1>
+        {showList && <button className="btn" id="add-recipient" onClick={() => {
+          returnFocus.current = "add-recipient";
+          setPhase({ kind: "open" });
+        }}>Add recipient</button>}
       </header>
-      {!showForm ? (
+      {showList ? (
         <>
           <div className="directory-search">
-            <input aria-label="Search recipients by name" type="search" placeholder="Search by name…" value={query}
+            <input id="recipient-search" aria-label="Search recipients by name" type="search" placeholder="Search by name…" value={query}
               onChange={(e) => { setQuery(e.target.value); setPage(0); }} />
           </div>
           {loadError && <p role="alert" className="error-card">{loadError} <button className="link" onClick={load}>Retry</button></p>}
           {phase.kind === "added" && <p role="status" className="added">{phase.name} added to your recipients.</p>}
-          {visible.length > 0 && <div className="directory-columns"><span>Name</span><span>Monthly cap</span></div>}
+          {phase.kind === "removed" && <p role="status" className="added">{phase.name} removed from your recipients.</p>}
+          {(visible.length > 0 || (list === null && !loadError)) && <div className="directory-columns">
+            <span>Name</span><span>Monthly cap</span><span className="sr-only">Actions</span>
+          </div>}
           <div className="directory-list" ref={scrollArea}>
-            {list === null && !loadError && <Skeleton label="Loading recipients" />}
+            {list === null && !loadError && <Skeleton variant="recipients" label="Loading recipients" />}
             {list !== null && !matches.length && <p className="hint">{list.length ? "No matching recipients." : "No recipients yet."}</p>}
             <ul aria-label="Recipient directory">
               {visible.map((r) => {
@@ -166,10 +223,20 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
                     <div className="person-identity"><strong>{r.name}</strong>
                       <small>{[r.country, r.currency].filter(Boolean).join(" · ")}</small>
                     </div>
-                    <div className="person-cap">{check === undefined ? "Checking limit…" :
+                    <div className="person-cap">{check === undefined ? <span className="cap-loading"><span className="sr-only">Checking limit…</span></span> :
                       check === null ? "Limit unavailable" : check.allowed ?
                       <>{formatAmount(check.monthlyCap.toString(), "").trim()} <small>/ 30 days</small></> :
                       <span className="not-allowed">Not in vault</span>}</div>
+                    <button type="button" className="remove-recipient" id={`delete-${r.address}`}
+                      aria-label={`Delete ${r.name}`} title={`Delete ${r.name}`} onClick={() => {
+                        returnFocus.current = `delete-${r.address}`;
+                        setPhase({ kind: "remove", recipient: r, stage: "review" });
+                      }}>
+                      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" />
+                      </svg>
+                    </button>
                   </li>
                 );
               })}
@@ -183,6 +250,17 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
             </div>}
           </footer>}
         </>
+      ) : phase.kind === "remove" ? (
+        <div className="remove-review">
+          <h2>{phase.recipient.name}</h2>
+          <code>{phase.recipient.address}</code>
+          <p>Deleting this recipient blocks future payouts to this wallet. Past payments stay in your history.</p>
+          {phase.error && <p role="alert" className="error-card">{phase.error}</p>}
+          <button className="btn remove-confirm" type="button" disabled={busy} onClick={() => void remove(phase.recipient)}>
+            {phase.stage === "checking" ? "Checking vault…" : phase.stage === "wallet" ? "Confirm in your wallet…" :
+              phase.stage === "directory" ? "Removing…" : phase.error ? "Retry deletion" : "Delete recipient"}
+          </button>
+        </div>
       ) : (
         <form
           className="add-form"
@@ -228,9 +306,6 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
                 : phase.kind === "directory"
                   ? "Saving the name…"
                   : "Add recipient"}
-            </button>
-            <button className="link" type="button" disabled={busy} onClick={() => setPhase({ kind: "closed" })}>
-              Cancel
             </button>
           </div>
         </form>

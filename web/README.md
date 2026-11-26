@@ -41,13 +41,14 @@ recipient phone page   ──► /api/fx/:currency ──► CoinMarketCap: toda
 
 ### The web server's route table to the agent
 
-Everything the browser may ask the agent goes through the 8 rows of [`lib/agent-proxy.ts`](lib/agent-proxy.ts); any other path answers 404.
+Everything the browser may ask the agent goes through the 9 rows of [`lib/agent-proxy.ts`](lib/agent-proxy.ts); any other path answers 404.
 
 | Web route | Agent call |
 |---|---|
 | `GET /api/vault` | `GET /vaults/:owner` |
 | `GET /api/directory` | `GET /directory?owner=` |
 | `POST /api/directory` | `POST /directory` |
+| `POST /api/directory/remove` | `POST /directory/remove` with the session owner and recipient address |
 | `POST /api/plans` | `POST /plans` |
 | `GET /api/plans/:id` | `GET /plans/:id` |
 | `GET /api/plans/:id/approval` | `GET /plans/:id/approval` |
@@ -79,7 +80,8 @@ The **Recipients** tab searches the owner's directory by name and shows ten matc
 - **Interrupted adds:** if the wallet popup is closed or the agent is down between the two writes, submitting the same recipient again finishes it.
 - **Refused before any popup** ([`lib/recipients.ts`](lib/recipients.ts)): a name already used (whatever the case), an address already allowed, the zero address, the demo attack address, the vault, the agent and the owner's own wallet, and a cap that is zero, not a plain number or above 1,000,000,000.
 - **Right after adding**, the owner can type "Pay Ramon 1": the agent reads the directory for each plan.
-- **Not built:** removing a recipient or changing a cap from the app. The recipient page shows local value only for the demo recipients; for a new recipient it shows the coin amounts.
+- **Deletion:** select the trash icon beside a recipient and confirm. The owner’s wallet disables future payments, then the agent removes the directory entry. A retry checks the vault before requesting another signature. Previous receipts stay available.
+- Changing a cap requires a separate vault update. The recipient page shows local value only for the demo recipients; for a new recipient it shows the coin amounts.
 
 ### The live attack
 

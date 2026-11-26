@@ -92,6 +92,7 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 | `GET /health` | `{ ok, agent }`. Never needs the API token. |
 | `GET /directory?owner=0x…` | That owner's recipient directory (names, addresses, country, currency, preferred coin). |
 | `POST /directory` | Adds or updates one of the owner's recipients: `{ owner, name, address, country?, currency?, preferredToken? }`. Names are unique per owner, at most 60 characters, on one line; an owner keeps at most 200 recipients. |
+| `POST /directory/remove` | Removes `{ owner, address }` from the directory after checking that the owner’s vault has disabled the address. Returns the updated list. |
 | `GET /vaults/:owner` | The owner's vault: owner, agent, paused, rules, today's spend and swaps, balances. 404 if they have none. |
 | `POST /plans` | `{ owner, message, depegThreshold? }` → a plan with warnings, notes and the vault's simulated verdict per payment. `depegThreshold` is the owner's depeg limit in percent (0 to 100, default 5); the plan's `depeg` field holds the guard's decision, each payment's `local` its amount in the recipient's currency, and `memory` what Living Brain recalled. Sends nothing. |
 | `GET /plans/:id` | The plan and every journal event for it. |

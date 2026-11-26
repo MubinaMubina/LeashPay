@@ -41,6 +41,8 @@ export function planOnboarding(state: OnboardingState): OnboardingStep[] {
   const steps: OnboardingStep[] = [];
   for (const { recipient, allowed, monthlyCap, inDirectory } of state.recipients) {
     assertNotAttackAddress(recipient.address);
+    // Removal disables a recipient but retains their cap. A never-configured entry has a zero cap.
+    if (!allowed && monthlyCap > 0n) continue;
     if (!allowed || monthlyCap < recipient.monthlyCap) steps.push({ kind: "allowRecipient", recipient });
     if (!inDirectory) steps.push({ kind: "addToDirectory", recipient });
   }

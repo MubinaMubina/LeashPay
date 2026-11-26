@@ -47,6 +47,12 @@ describe("planOnboarding", () => {
     expect(kinds(half)).toEqual(["addToDirectory Marco", "allowRecipient Mai", `fund USDC ${FUNDING_TARGET}`]);
   });
 
+  it.each([true, false])("leaves revoked demo recipients disabled (in directory: %s)", (inDirectory) => {
+    const state = done();
+    state.recipients[0] = { recipient: LINH, allowed: false, monthlyCap: LINH.monthlyCap, inDirectory };
+    expect(planOnboarding(state)).toEqual([]);
+  });
+
   it("raises a monthly cap that is below the demo's", () => {
     const state = done();
     state.recipients[0] = { recipient: LINH, allowed: true, monthlyCap: 10n, inDirectory: true };

@@ -222,7 +222,6 @@ export function Dashboard({ vault }: { vault: Address }) {
           <div className="sub">Cournot's USDC depeg risk is checked before each plan. Applies to the next plan you send.</div>
 
         </details>
-        <button className="directory-shortcut" onClick={() => selectTab("Recipients", true)}>Recipients <span aria-hidden="true">↗</span></button>
       </div>
       <div className="kill-area">
         <button className={`kill ${paused ? "on" : ""}`} onClick={toggle} disabled={!info || Boolean(vaultError) || killSwitch.kind === "sending"}>
