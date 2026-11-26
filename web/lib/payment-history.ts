@@ -15,6 +15,14 @@ export interface PaidLog {
   hash: Hex;
   block: bigint;
   logIndex: number;
+  fee?: { token: Address; amount: bigint };
+}
+
+/** Both events belong to the same payout, even if a transaction contains several payouts. */
+export function sentPaymentsWithFees(payments: PaidLog[], charges: PaidLog[]): PaidLog[] {
+  const key = (log: PaidLog) => [log.address, log.hash, log.ref, log.recipient].join(":").toLowerCase();
+  const fees = new Map(charges.map(charge => [key(charge), { token: charge.token, amount: charge.amount }]));
+  return payments.map(payment => ({ ...payment, fee: fees.get(key(payment)) }));
 }
 
 export interface HistoryReader {
@@ -30,6 +38,7 @@ interface Payment {
   log: PaidLog;
   direction: Direction;
   symbol: Stablecoin;
+  fee?: { amount: string; symbol: "USDT" };
   /** The other party's wallet and, if known, their LeashPay vault. */
   wallet: Address;
   vault?: Address;
@@ -45,6 +54,7 @@ export interface HistoryItem {
   direction: Direction;
   symbol: Stablecoin;
   amount: string;
+  fee?: { amount: string; symbol: "USDT" };
   wallet: Address;
   address: Address;
   vault?: Address;
@@ -84,6 +94,8 @@ export async function ownerPayments(owner: Address, factory: Address, reader: Hi
     const other = sent ? recipient : sender;
     payments.set(`${log.hash}:${log.logIndex}`, {
       log, symbol, direction: sent ? (received ? "self" : "sent") : "received",
+      ...(sent && log.fee?.token.toLowerCase() === tokens.usdt.toLowerCase()
+        ? { fee: { amount: String(log.fee.amount), symbol: "USDT" } } : {}),
       wallet: other?.owner ?? log.recipient, vault: other?.vault, address: sent ? log.recipient : log.address,
     });
   }

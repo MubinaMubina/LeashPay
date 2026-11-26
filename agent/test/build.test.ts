@@ -179,6 +179,18 @@ describe("scheduled dates", () => {
 });
 
 describe("planLimitNotes", () => {
+  it("counts USDT fees against liquid USDT and the daily limit for a USDC batch", async () => {
+    const snapshot = await new FakeGateway().snapshot(VAULT);
+    snapshot.balances = { USDT: parseUnits("0.01", 18), USDC: parseUnits("2", 18), tbillValue: parseUnits("5", 18) };
+    snapshot.rules.dailyCap = parseUnits("2.01", 18);
+    const plan = buildPlan(draft([pay("Linh", "1", "", "USDC"), pay("Marco", "1", "", "USDC")]), ctx);
+    plan.paymentFee = { token: "USDT", amount: String(10n ** 16n), recipient: VAULT };
+    expect(planLimitNotes(plan, snapshot)).toEqual([
+      "Together these payments need 0.02 USDT, but the vault holds 0.01 USDT. The last ones will be refused.",
+      "Together these payments total $2.02, more than the $2.01 left in today's limit. The last ones will be refused.",
+    ]);
+  });
+
   it("notes when the balance or today's limit runs out partway through the plan", async () => {
     const snapshot = await new FakeGateway().snapshot(VAULT); // 5000 USDT, $2000 daily limit
     const plan = buildPlan(draft([pay("Marco", "1500"), pay("Linh", "800", "", "USDC")]), ctx);

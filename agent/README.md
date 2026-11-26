@@ -41,7 +41,7 @@ Why it is built this way:
 - **One structured Claude call, not a multi-turn agent loop.** Turning a sentence into a payment list is a well-defined extraction. The server does the lookups and checks itself, which keeps the live demo fast and the behavior predictable. The call uses `client.beta.messages.create` with a JSON schema built from Zod, `medium` effort and server-side refusal fallbacks. The code checks the stop reason (refusal, cut-off) before it reads the reply, then validates the reply against the schema itself.
 - **Only the owner can release money.** Running a plan needs a signature from the owner's wallet over a text that names the plan, its on-chain reference, the vault, every payment (with anything the agent flagged about it), the plan's notes and an expiry. The agent checks it locally by recovering the signer, so no RPC node is trusted to vouch for a signature. A signature for one plan can't run another, and each approval runs its plan once.
 - **The vault is the only authority.** The agent never re-implements the vault's rules. To preview a payment it runs the real `pay()` as a simulation, so the verdict comes from the contract itself.
-- **"Paid" means final.** A payment counts as paid only when the chain's finalized state shows it: the receipt, re-read once its block is final and matched to that block's hash, holds the vault's `Paid` event for that exact recipient, coin, amount and plan reference; or the vault refuses the payment as a duplicate as of the finalized block (asked at that block's number, which the public node answers). BSC finalizes a block a few blocks after it (seconds on testnet). A transaction that another one replaced, or that a reorganization removed, never counts, and a reverted one counts as failed only if the vault doesn't already count the payment as made.
+- **"Paid" means final.** The agent rechecks the receipt against the finalized block and matches the vault's `Paid` event to the approved recipient, token, amount and reference. For sponsored vaults it also checks the transfers to the beneficiary and to the approved fee treasury. With a known hash, the receipt can be checked at any age. If the original hash is missing, the agent searches up to 2,000 finalized blocks for a matching receipt. A fee-bearing payment stays pending until its receipt is verified. For the original fee-free vault, a finalized refusal indicating the same payment was already made also establishes completion.
 - **Retries never pay twice.** Each payment is signed first, its hash written to an append-only journal, and only then sent, so a crash at any moment leaves a hash the next run looks up on the chain. While any earlier transaction for that payment could still land, the agent waits instead of resending. The vault's `DuplicatePayment` rule (each plan pays each person once) is the last line of defense.
 - **One failure doesn't stop the plan.** A refused payment, or one the node is slow to confirm ("pending"), doesn't block the others. In the attack demo, the payment to `0xBAD…` is refused while Linh is still paid.
 - **Reachable from this machine only, by default.** The server listens on 127.0.0.1, answers only requests addressed to this machine (no DNS rebinding), and accepts only JSON posts, which web pages can't send to it without permission. Listening anywhere else requires `AGENT_API_TOKEN`.
@@ -84,6 +84,21 @@ Requirements: Node.js 22 or newer.
    It prints the agent address, the factory and the model, and listens on `http://127.0.0.1:8787` (set `PORT` to change it). Only one server can use a data folder (`agent/data/`, or `DATA_DIR`) at a time, and its files are readable only by the account running the agent.
 
 Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check against or pay from. Without a Claude key, `POST /plans` answers 503 with a message saying so; without `AGENT_PRIVATE_KEY`, so does `POST /plans/:id/execute`.
+
+## Sponsored owner actions
+
+The optional BSC testnet relay pays the native gas for vault activation and for adding a recipient. Set `SPONSORED_FACTORY_ADDRESS` and `FACTORY_ADDRESS` to the same deployed V2 factory on chain 97. Fund its `defaultAgent` with tBNB and make that wallet available to the agent through `AGENT_PRIVATE_KEY`. The web server attaches the owner's authenticated session wallet to each request.
+
+| Endpoint | Request and response |
+|---|---|
+| `POST /sponsor/prepare` | Send `{ owner, action: "activate" }` or `{ owner, action: "addRecipient", recipient, monthlyCap }`. The cap is a decimal string in 18-decimal base units. The response contains the EIP-712 `typedData`, a Unix `deadline` in seconds, and a `nonce` for recipient additions. Numeric message fields are decimal strings. |
+| `POST /sponsor/execute` | Send the same fields with the returned `deadline`, any `nonce`, and the wallet's `signature`. A confirmed operation returns `{ vault, hash }`. An operation already satisfied on-chain returns `{ vault }`. |
+
+Approvals expire after ten minutes. Activation uses the demo rules. A recipient addition binds the address, cap and recipient nonce to that owner's vault. An existing recipient with a different cap requires a separate owner action.
+
+Run **one active agent process per signing key** and mount a persistent `DATA_DIR`. Payroll and sponsorship share one wallet lock and nonce manager. The relay saves each signed transaction in `DATA_DIR/sponsorships.json` before broadcast. A retry of the same pending action can reuse those bytes after a timeout or restart. Independent deployments that run concurrently need distinct agent keys.
+
+The relay reserves at most **0.05 tBNB per UTC day** against estimated maximum transaction costs. It allows 100 reservations per day across the deployment and 10 per owner. The gas price ceiling is 1 gwei. Gas limits include 20% headroom and are capped at 6,000,000 for activation and 200,000 for a recipient addition.
 
 ## API
 

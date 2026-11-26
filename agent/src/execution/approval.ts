@@ -26,6 +26,21 @@ export function approvalMessage(plan: Plan, terms: ApprovalTerms): string {
     ...p.warnings.map((w) => `  check: ${oneLine(w, 200)}`),
   ]);
   const passed = isCalendarDate(plan.scheduledFor) && plan.scheduledFor < plan.createdAt.slice(0, 10);
+  const feeLines: string[] = [];
+  if (plan.paymentFee) {
+    const payable = plan.payments.filter(isExecutable);
+    const fee = BigInt(plan.paymentFee.amount);
+    const maximumFee = fee * BigInt(payable.length);
+    const totals = { USDT: maximumFee, USDC: 0n };
+    for (const payment of payable) totals[payment.token] += payment.amount;
+    const debits = (["USDT", "USDC"] as const).filter((token) => totals[token] > 0n)
+      .map((token) => `${formatUnits(totals[token], 18)} ${token}`);
+    feeLines.push(
+      `Service fee: ${formatUnits(fee, 18)} USDT per successful payment to ${plan.paymentFee.recipient}`,
+      `Maximum service fees: ${formatUnits(maximumFee, 18)} USDT`,
+      `Maximum vault debit: ${debits.join(" + ") || "0 USDT"}`,
+    );
+  }
   return [
     "LeashPay: approve this payment plan",
     `Plan: ${plan.id}`,
@@ -34,6 +49,7 @@ export function approvalMessage(plan: Plan, terms: ApprovalTerms): string {
     "Network: BNB Smart Chain Testnet (chain 97)",
     "Payments:",
     ...(payments.length > 0 ? payments : ["- none"]),
+    ...feeLines,
     // The plan's notes (Claude's warnings, totals over today's limit) reach the wallet prompt too.
     ...(plan.notes.length > 0 ? ["Notes:", ...plan.notes.map((note) => `- ${oneLine(note, 200)}`)] : []),
     `Scheduled for: ${oneLine(plan.scheduledFor, 40)}${passed ? " (already past when this plan was made)" : ""}`,

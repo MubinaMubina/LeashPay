@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
-import { errorText, useSendAndWait } from "@/lib/client";
+import { errorText, useSendAndWait, useSponsoredAction } from "@/lib/client";
 import { activatePaymentVault, readOwnerVault } from "@/lib/onboarding";
 import { Dashboard } from "./Dashboard";
 import type { AccessPrompt } from "./AccessNotice";
@@ -14,6 +14,7 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
   const [attempt, setAttempt] = useState(0);
   const busy = useRef(false);
   const sendAndWait = useSendAndWait();
+  const sponsor = useSponsoredAction();
 
   useEffect(() => {
     if (!owner) return;
@@ -37,7 +38,7 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
     setPhase("activating");
     setError("");
     try {
-      setVault(await activatePaymentVault(owner, sendAndWait));
+      setVault(await activatePaymentVault(owner, sendAndWait, sponsor));
     } catch (err) {
       setError(errorText(err));
       retry();
@@ -52,7 +53,9 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
     if (vault) return null;
     switch (phase) {
       case "inactive": return { state: phase, title: "Activate your vault first",
-        detail: "Your vault keeps track of who you can pay and how much. Activation needs a little tBNB for the testnet fee.",
+        detail: sponsor
+          ? "Sign with your wallet to activate payments. LeashPay covers the network fee."
+          : "Your vault keeps track of who you can pay and how much. Activation needs a little tBNB for the testnet fee.",
         action: { label: "Activate vault", run: activate }, error };
       case "unavailable": return { state: phase, title: "Vault status unavailable",
         detail: "We couldn’t check your vault. Try the lookup again.", action: { label: "Check again", run: retry } };

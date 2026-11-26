@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from "viem";
+import { BaseError, formatUnits, isAddressEqual, keccak256, toHex, type Address, type Hex } from "viem";
 import { z } from "zod";
 import { CHAT_MESSAGE_LIMIT, type ChatDecision, type ChatInput } from "./chat";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
@@ -19,9 +19,12 @@ import { DataFileError, DirectoryRuleError, RecipientEntrySchema, type Recipient
 import { PlannerError, type PlannerInput } from "./plan/planner";
 import type { PlanDraft } from "./plan/schema";
 import { AddressSchema } from "./validation";
+import { SponsorError, SponsorExecuteBody, SponsorPrepareBody } from "./sponsor/authorization";
+import type { SponsorshipService } from "./sponsor/service";
 
 export interface AppDeps {
   gateway: VaultGateway;
+  sponsor?: SponsorshipService;
   planner: (input: PlannerInput) => Promise<PlanDraft>;
   chat?: (input: ChatInput) => Promise<ChatDecision>;
   directory: RecipientDirectory;
@@ -200,6 +203,16 @@ export function createApp(deps: AppDeps) {
 
   app.get("/health", (c) => c.json({ ok: true, agent: deps.gateway.agentAddress }));
 
+  app.post("/sponsor/prepare", async (c) => {
+    if (!deps.sponsor) throw new ConfigurationError("Sponsorship needs a configured sponsored factory and agent wallet on BSC testnet.");
+    return c.json(toJson(await deps.sponsor.prepare(input(SponsorPrepareBody, await readJson(c)))));
+  });
+  app.post("/sponsor/execute", async (c) => {
+    if (!deps.sponsor) throw new ConfigurationError("Sponsorship needs a configured sponsored factory and agent wallet on BSC testnet.");
+    const action = input(SponsorExecuteBody, await readJson(c));
+    return c.json(await deps.sponsor.execute(action, () => deps.executor.reserveForSponsorship(action.owner)));
+  });
+
   app.get("/directory", (c) => {
     const owner = input(AddressSchema, c.req.query("owner"));
     return c.json(deps.directory.list(owner));
@@ -317,7 +330,10 @@ export function createApp(deps: AppDeps) {
     }
     if (fxQuotes) attachLocalAmounts(plan, directory, await fxQuotes);
     if (recalled) plan.memory = recalled;
-    if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
+    if (vault && snapshot) {
+      if (plan.kind === "payment") plan.paymentFee = await deps.gateway.paymentFee(vault);
+      await preview(deps.gateway, vault, snapshot, plan);
+    }
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });
     return c.json(toJson(plan), 201);
@@ -330,19 +346,29 @@ export function createApp(deps: AppDeps) {
   });
 
   /** Why a plan can't be run at all, if it can't. */
-  const notRunnable = (c: Context, plan: Plan) => {
+  const notRunnable = async (c: Context, plan: Plan) => {
     if (!plan.vault) {
       return c.json({ error: "This plan has no vault: the owner had no vault (or no factory was configured) when it was made." }, 422);
     }
     if (plan.kind !== "payment") return c.json({ error: "This message wasn't a payment request, so there is nothing to run." }, 422);
+    const activeVault = await deps.gateway.vaultOf(plan.owner);
+    if (!activeVault || !isAddressEqual(activeVault, plan.vault)) {
+      return c.json({ error: "This plan was created for a different vault. Request a new plan." }, 409);
+    }
+    const fee = await deps.gateway.paymentFee(plan.vault);
+    const quoted = plan.paymentFee;
+    if (fee?.amount !== quoted?.amount || fee?.token !== quoted?.token ||
+        (fee && quoted && !isAddressEqual(fee.recipient, quoted.recipient))) {
+      return c.json({ error: "The vault's payment fee differs from this plan. Request a new plan to review the total." }, 409);
+    }
     return null;
   };
 
   // The text the owner's wallet signs to run the plan, valid for APPROVAL_TTL_MS and usable once.
-  app.get("/plans/:id/approval", (c) => {
+  app.get("/plans/:id/approval", async (c) => {
     const plan = deps.journal.plan(c.req.param("id"));
     if (!plan) return c.json({ error: "No plan with that id." }, 404);
-    const refusal = notRunnable(c, plan);
+    const refusal = await notRunnable(c, plan);
     if (refusal) return refusal;
     const payEarly = c.req.query("payEarly") === "true";
     const expires = new Date(now().getTime() + APPROVAL_TTL_MS).toISOString();
@@ -354,7 +380,7 @@ export function createApp(deps: AppDeps) {
   app.post("/plans/:id/execute", async (c) => {
     const plan = deps.journal.plan(c.req.param("id"));
     if (!plan) return c.json({ error: "No plan with that id." }, 404);
-    const refusal = notRunnable(c, plan);
+    const refusal = await notRunnable(c, plan);
     if (refusal) return refusal;
 
     const approval = input(ExecuteBody, await readJson(c));
@@ -398,7 +424,7 @@ export function createApp(deps: AppDeps) {
     if (!deps.demoAttack) return c.json({ error: "Not found." }, 404);
     const plan = deps.journal.plan(c.req.param("id"));
     if (!plan) return c.json({ error: "No plan with that id." }, 404);
-    const refusal = notRunnable(c, plan);
+    const refusal = await notRunnable(c, plan);
     if (refusal) return refusal;
     const results = await deps.executor.demoAttack(plan, DEMO_ATTACK_ADDRESS);
     if (deps.memory) for (const note of notesForAttack(plan, results, now())) void deps.memory.remember(note);
@@ -406,6 +432,7 @@ export function createApp(deps: AppDeps) {
   });
 
   app.onError((err, c) => {
+    if (err instanceof SponsorError) return c.json({ error: err.message }, err.status);
     if (err instanceof BadRequestError) {
       return c.json({ error: err.message, ...(err.details === undefined ? {} : { details: err.details }) }, 400);
     }

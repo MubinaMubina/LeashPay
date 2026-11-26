@@ -22,6 +22,10 @@ LeashPay keeps the money in a smart contract, the **vault**. The AI agent can on
 6. Between payouts, idle funds sit in a tokenized T-bill (a mock real-world-asset token whose value grows) and are pulled back before the next payout.
 7. Each recipient opens a phone page showing the payments received and their value in local currency.
 
+### Sponsored vaults on BSC testnet
+
+A new owner can activate a sponsored vault, add a recipient and approve a payout with **zero tBNB**. The agent pays the network fees. Before signing, the owner sees the recipient amount, the **0.01 USDT** fee per successful payout, and the maximum debit. A 20 USDT payout takes 20.01 USDT from the vault. The automated local walkthrough, public receipts and preview settings are in the [sponsored vault guide](docs/sponsored-vault.md).
+
 ### The three demo moments
 
 - **Happy path:** "Pay my 3 freelancers" sends three payments in seconds, each with its local-currency amount and a BscScan link.

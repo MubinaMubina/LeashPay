@@ -15,6 +15,8 @@ help:
 	@echo "make logs    Show the last 25 worker log lines"
 	@echo "make setup   Install Python dependencies and contract submodules"
 	@echo "make test    Run Foundry, the frozen ABI checks and Python tests"
+	@echo "make test-sponsored-flow  Activate, add a recipient and pay from a zero-BNB wallet on a fresh local chain"
+	@echo "make verify-sponsored-flow  Check the recorded public testnet receipts (read-only)"
 	@echo "make verify  Replay payment, swap and T-bill transactions (read-only)"
 	@echo "make verify-tbill  Replay the T-bill deposit, withdrawal and payout (read-only)"
 	@echo "make verify-sources  Check the eight published BscScan sources (read-only)"
@@ -79,6 +81,14 @@ $(LIVE_CHECKS): $(DEPS)
 verify-sources: $(DEPS)
 	"$(FORGE)" build --quiet --root contracts
 	"$(PY)" scripts/verify-testnet.py --check
+
+.PHONY: test-sponsored-flow verify-sponsored-flow
+test-sponsored-flow:
+	"$(FORGE)" build --quiet --root contracts
+	cd agent && node --import tsx scripts/check-sponsored-flow.ts
+
+verify-sponsored-flow:
+	cd agent && node --import tsx scripts/verify-sponsored-receipts.ts
 
 .PHONY: megafuel-status megafuel-extend
 megafuel-status: $(DEPS)

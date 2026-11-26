@@ -1,0 +1,20 @@
+{
+  "chainId": 97,
+  "factory": "0xec8339Aa64277e759475c6777D7832652a390b99",
+  "factoryBlock": 145058484,
+  "factoryTransaction": "0x70d15d64ea7b09d0802bb4243bf8e2298b697229abfd71d412b0ba5b54f74c0e",
+  "treasury": "0x9B3f81b1B6E8baecAbD47698A46Fa3684834A7c2",
+  "sponsor": "0xbb74182dE67BE79076CDEd21be54b084B81797A0",
+  "usdt": "0x0081297D056308340E5501B5F2f076344A46aB44",
+  "proof": {
+    "owner": "0xFdE66f183f5F8988086fCE0b55804C011472c7c2",
+    "vault": "0x6eF72D31a0566a0f1E6437F15aF8C2325A3FDbb0",
+    "recipient": "0x5dc84dcf90Fac83276FE2cfE4EabC898ceCa83F9",
+    "amountUSDT": "20",
+    "feeUSDT": "0.01",
+    "activate": "0xa53d7dc935e61d88a45f17ad419d4a721cc33c6293db7a0aa65cd7a7a921c4d9",
+    "addRecipient": "0xbc456abc9b3f10bc6be9d21c6769d73c076221d26d124069c71b6aca3b77689f",
+    "faucet": "0xb86e469dda68ba169cec470129a25e6a9df12c92adbf9293713e24e948abee6a",
+    "payment": "0x44e14f8ecf7c5d72bac78909197e8fc4a1af9fa0f92cfb49e2b1df0ad3b16f09"
+  }
+}

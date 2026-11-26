@@ -49,6 +49,8 @@ export const ROUTES: readonly Route[] = [
   { method: "POST", web: ["chat"], agent: () => "/chat", owner: "body", timeoutMs: 65_000 },
   { method: "POST", web: ["directory", "rename"], agent: () => "/directory/rename", owner: "body", timeoutMs: 15_000 },
   { method: "POST", web: ["directory", "remove"], agent: () => "/directory/remove", owner: "body", timeoutMs: 30_000 },
+  { method: "POST", web: ["sponsor", "prepare"], agent: () => "/sponsor/prepare", owner: "body", timeoutMs: 30_000 },
+  { method: "POST", web: ["sponsor", "execute"], agent: () => "/sponsor/execute", owner: "body", timeoutMs: 90_000 },
   // Claude plans in up to a minute, and previews read the chain.
   { method: "POST", web: ["plans"], agent: () => "/plans", owner: "body", timeoutMs: 150_000 },
   { method: "GET", web: ["plans", ":id"], agent: ({ id }) => `/plans/${id}`, owner: "plan", timeoutMs: 15_000 },

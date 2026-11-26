@@ -214,6 +214,32 @@ describe("Executor: a first run", () => {
 });
 
 describe("Executor: running a plan again", () => {
+  it("records a V2 duplicate only after locating its matching finalized receipt with the signed fee terms", async () => {
+    const plan = makePlan("fee-duplicate", [{ name: "Linh", amount: "1" }]);
+    plan.paymentFee = { token: "USDT", amount: "10000000000000000", recipient: MARCO };
+    gateway.refusals.set(LINH, refusal("DuplicatePayment", [plan.ref, LINH]));
+    gateway.findFinalizedPayment = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(hashOf(42));
+    const [unverified] = await executor.execute(plan);
+    expect(unverified).toMatchObject({ status: "pending", hash: null });
+    expect(types(plan.id)).not.toContain("step_succeeded");
+    const [verified] = await executor.execute(plan);
+    expect(verified).toMatchObject({ status: "paid", hash: hashOf(42) });
+    expect(gateway.findFinalizedPayment).toHaveBeenCalledWith(VAULT, expect.objectContaining({
+      fee: { token: USDT, amount: 10n ** 16n, treasury: MARCO },
+    }));
+    expect(gateway.sent).toHaveLength(0);
+  });
+
+  it("rechecks an old hashless V2 success without broadcasting when its receipt cannot be verified", async () => {
+    const plan = makePlan("old-fee-duplicate", [{ name: "Linh", amount: "1" }]);
+    plan.paymentFee = { token: "USDT", amount: "10000000000000000", recipient: MARCO };
+    journal.append({ type: "step_succeeded", planId: plan.id, index: 0, hash: null });
+    gateway.findFinalizedPayment = vi.fn().mockRejectedValue(new Error("RPC unavailable"));
+    const [result] = await executor.execute(plan);
+    expect(result).toMatchObject({ status: "pending", hash: null });
+    expect(gateway.sent).toHaveLength(0);
+  });
+
   it("never sends twice when the same plan runs again", async () => {
     const plan = makePlan("p3", [{ name: "Linh", amount: "300" }]);
     await executor.execute(plan);

@@ -34,12 +34,22 @@ export interface VaultSnapshot {
   balances: { USDT: bigint; USDC: bigint; tbillValue: bigint };
 }
 
+/** Immutable terms advertised by a fee-charging vault. Amount is in 18-decimal USDT units. */
+export interface PaymentFee {
+  token: "USDT";
+  amount: string;
+  recipient: Address;
+}
+
+export const PAYMENT_FEE_UNITS = 10n ** 16n;
+
 /** One pay() call. `ref` is the plan's bytes32 reference. */
 export interface PayStep {
   recipient: Address;
   token: Address;
   amount: bigint;
   ref: Hex;
+  fee?: { token: Address; amount: bigint; treasury: Address };
 }
 
 /** What the chain says about a pay() transaction the agent signed. */
@@ -80,6 +90,7 @@ export interface VaultGateway {
   readonly agentAddress: Address | null;
   deployment(): Promise<DeploymentConfig>;
   vaultOf(owner: Address): Promise<Address | null>;
+  paymentFee(vault: Address): Promise<PaymentFee | undefined>;
   snapshot(vault: Address): Promise<VaultSnapshot>;
   /**
    * Runs pay() as a simulation. Returns the vault's refusal, or null if it would go through.
@@ -97,6 +108,8 @@ export interface VaultGateway {
    * as made (its DuplicatePayment check). Proves a payment the journal has no hash for.
    */
   paidAsOfFinality(vault: Address, step: PayStep): Promise<boolean>;
+  /** Search recent finalized Paid logs and return the hash only when its receipt proves the whole payment. */
+  findFinalizedPayment(vault: Address, step: PayStep): Promise<Hex | null>;
 
   // --- The demo attack (POST /plans/:id/demo-attack): a payment the vault must refuse, sent for real.
 

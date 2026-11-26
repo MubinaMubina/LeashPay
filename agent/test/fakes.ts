@@ -9,6 +9,7 @@ import type {
   DeploymentConfig,
   PayStep,
   PaymentCheck,
+  PaymentFee,
   SignedPayment,
   VaultGateway,
   VaultSnapshot,
@@ -64,6 +65,11 @@ export class FakeGateway implements VaultGateway {
   /** Hashes of signed payments whose nonce was given back without broadcasting. */
   readonly discarded: Hex[] = [];
   vault: Address | null = VAULT;
+  fee?: PaymentFee;
+
+  async paymentFee(): Promise<PaymentFee | undefined> {
+    return this.fee;
+  }
   /** Recipients the vault allowlists (the demo attack refuses to target these). */
   readonly allowed = new Set<Address>();
   /** Demo-attack transactions signed without simulation, with their gas limit. */
@@ -171,6 +177,10 @@ export class FakeGateway implements VaultGateway {
 
   async paidAsOfFinality(_vault: Address, step: PayStep): Promise<boolean> {
     return this.refusals.get(step.recipient)?.name === "DuplicatePayment" && this.duplicateIsFinal;
+  }
+
+  async findFinalizedPayment(_vault: Address, _step: PayStep): Promise<Hex | null> {
+    return null;
   }
 
   async waitForPayment(_vault: Address, _step: PayStep, hash: Hex): Promise<PaymentCheck> {

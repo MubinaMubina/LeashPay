@@ -10,8 +10,10 @@ import {
   encodeAbiParameters,
   encodeErrorResult,
   encodeEventTopics,
+  erc20Abi,
   keccak256,
   pad,
+  parseAbi,
   type Address,
   type Hex,
 } from "viem";
@@ -24,6 +26,9 @@ import { AGENT, LINH, MARCO, USDC, USDT, VAULT } from "./fakes";
 const HASH = pad("0x1", { size: 32 }) as Hex;
 const OTHER = pad("0xee", { size: 32 }) as Hex;
 const step: PayStep = { recipient: LINH, token: USDT, amount: 300n * 10n ** 18n, ref: keccak256("0x01") };
+const fee = { token: USDT, treasury: MARCO, amount: 10n ** 16n };
+const feeStep = { ...step, token: USDC, fee };
+const feeAbi = parseAbi(["event PaymentFeeCharged(address indexed recipient, address indexed token, uint256 amount, bytes32 indexed ref)"]);
 
 /** A Paid event log, as the vault would emit it. */
 function paidLog(overrides: Partial<PayStep> & { from?: Address } = {}) {
@@ -39,6 +44,28 @@ function paidLog(overrides: Partial<PayStep> & { from?: Address } = {}) {
     transactionIndex: 0,
     removed: false,
   };
+}
+
+function transferLog(token: Address, from: Address, to: Address, amount: bigint, logIndex: number) {
+  return {
+    ...paidLog(), address: token, logIndex,
+    topics: encodeEventTopics({ abi: erc20Abi, eventName: "Transfer", args: { from, to } }),
+    data: encodeAbiParameters([{ type: "uint256" }], [amount]),
+  };
+}
+
+function chargedPaymentLogs(payment = feeStep) {
+  return [
+    transferLog(payment.token, VAULT, payment.recipient, payment.amount, 0),
+    { ...paidLog(payment), logIndex: 1 },
+    transferLog(fee.token, VAULT, fee.treasury, fee.amount, 2),
+    {
+      ...paidLog(), logIndex: 3,
+      topics: encodeEventTopics({ abi: feeAbi, eventName: "PaymentFeeCharged",
+        args: { recipient: payment.recipient, token: fee.token, ref: payment.ref } }),
+      data: encodeAbiParameters([{ type: "uint256" }], [fee.amount]),
+    },
+  ] as const;
 }
 
 const BLOCK = pad("0xb", { size: 32 }) as Hex;
@@ -90,6 +117,74 @@ describe("judgePayment", () => {
 
   it("doesn't count a reverted transaction", () => {
     expect(judgePayment(VAULT, step, receipt([paidLog()], "reverted"))).toMatchObject({ status: "not_paid" });
+  });
+
+  it("requires the vault's fee event and the actual USDT transfer from the vault to the approved treasury", () => {
+    const [payout, paid, transfer, charged] = chargedPaymentLogs();
+    expect(judgePayment(VAULT, feeStep, receipt([payout, paid, transfer, charged])).status).toBe("paid");
+    for (const logs of [
+      [paid, transfer, charged], [payout, paid, charged], [payout, paid, transfer],
+      [payout, paid, transfer, transfer, charged], [payout, paid, transfer, { ...charged, address: AGENT }],
+      [payout, paid, transfer, { ...charged, data: paid.data }], [payout, paid, { ...transfer, address: USDC }, charged],
+      [payout, paid, transferLog(USDT, VAULT, LINH, fee.amount, 2), charged],
+      [payout, paid, transferLog(USDT, AGENT, MARCO, fee.amount, 2), charged],
+      [payout, paid, transferLog(USDT, VAULT, MARCO, fee.amount + 1n, 2), charged],
+    ]) {
+      expect(judgePayment(VAULT, feeStep, receipt(logs)).status).toBe("not_paid");
+    }
+  });
+
+  it("keeps the payout separate when the treasury is itself paid exactly 0.01 USDT", () => {
+    const payment = { ...feeStep, token: USDT, recipient: fee.treasury, amount: fee.amount };
+    const [payout, paid, transfer, charged] = chargedPaymentLogs(payment);
+    expect(judgePayment(VAULT, payment, receipt([payout, paid, transfer, charged])).status).toBe("paid");
+    expect(judgePayment(VAULT, payment, receipt([payout, paid, charged])).status).toBe("not_paid");
+  });
+});
+
+describe("ViemVaultGateway.paymentFee", () => {
+  const legacy = "0x80b66347374C6df4f157368497201aa63a371f60";
+  const missingSelector = new ContractFunctionRevertedError({
+    abi: feeAbi, functionName: "paymentTerms", data: "0x", message: "execution reverted",
+  });
+
+  it("recognizes the published V1 factory and an empty selector revert from viem", async () => {
+    const readContract = vi.fn().mockRejectedValue(missingSelector);
+    const client = { readContract } as never;
+    expect(await new ViemVaultGateway(client, null, legacy).paymentFee(VAULT)).toBeUndefined();
+    expect(readContract).not.toHaveBeenCalled();
+    expect(await new ViemVaultGateway(client, null, AGENT).paymentFee(VAULT)).toBeUndefined();
+    await expect(new ViemVaultGateway(client, null, AGENT, true).paymentFee(VAULT)).rejects.toBe(missingSelector);
+    readContract.mockRejectedValueOnce(new Error("RPC unavailable"));
+    await expect(new ViemVaultGateway(client, null, AGENT).paymentFee(VAULT)).rejects.toThrow("RPC unavailable");
+  });
+});
+
+describe("ViemVaultGateway.findFinalizedPayment", () => {
+  const paidEntry = { args: { amount: feeStep.amount }, transactionHash: HASH, removed: false };
+  const gateway = (client: Record<string, unknown>) => new ViemVaultGateway(client as never, null, VAULT);
+  it("uses indexed Paid logs to find a hash and verifies its complete receipt against the finalized chain", async () => {
+    const getLogs = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([paidEntry]);
+    const getTransactionReceipt = vi.fn().mockResolvedValue(receipt([...chargedPaymentLogs()]));
+    const gw = gateway({ getBlock: chainAt(2_000n), getLogs, getTransactionReceipt });
+    expect(await gw.findFinalizedPayment(VAULT, feeStep)).toBe(HASH);
+    expect(getLogs).toHaveBeenCalledWith(expect.objectContaining({
+      address: VAULT, args: { recipient: LINH, token: USDC, ref: step.ref }, toBlock: 2_000n,
+    }));
+    expect(getTransactionReceipt).toHaveBeenCalledWith({ hash: HASH });
+  });
+
+  it("leaves a wrong fee receipt or lost fork unverified and bounds searches with no result", async () => {
+    const logs = chargedPaymentLogs();
+    const getLogs = vi.fn().mockResolvedValue([paidEntry]);
+    const getTransactionReceipt = vi.fn().mockResolvedValueOnce(receipt([logs[1], logs[3]]))
+      .mockResolvedValue(receipt([...logs]));
+    expect(await gateway({ getBlock: chainAt(500n), getLogs, getTransactionReceipt }).findFinalizedPayment(VAULT, feeStep)).toBeNull();
+    expect(await gateway({ getBlock: chainAt(500n, OTHER), getLogs, getTransactionReceipt }).findFinalizedPayment(VAULT, feeStep)).toBeNull();
+    getLogs.mockClear().mockResolvedValue([]);
+    expect(await gateway({ getBlock: chainAt(1_000_000n), getLogs }).findFinalizedPayment(VAULT, feeStep)).toBeNull();
+    expect(getLogs.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(getLogs.mock.calls.every(([range]) => range.fromBlock > 0n && range.toBlock - range.fromBlock < 500n)).toBe(true);
   });
 });
 

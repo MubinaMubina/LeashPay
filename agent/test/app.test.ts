@@ -68,6 +68,43 @@ async function approve(api: Api, planId: string, { payEarly = false, account = O
 
 const execute = (api: Api, planId: string, body: unknown) => api.request(`/plans/${planId}/execute`, json(body));
 
+describe("fee-bearing approvals", () => {
+  const fee = { token: "USDT" as const, amount: "10000000000000000", recipient: MARCO };
+
+  it("binds USDT fees to the signature, including fees on USDC and only one fee for combined lines", async () => {
+    const api = app();
+    gateway.fee = fee;
+    planner.mockResolvedValue({ kind: "payment", scheduled_for: "now", notes: [], payments: [
+      { recipient_name: "Linh", recipient_address: "", amount: "12", currency: "USDC" },
+      { recipient_name: "Linh", recipient_address: "", amount: "8", currency: "USDC" },
+      { recipient_name: "Unknown", recipient_address: "", amount: "3", currency: "USDT" },
+    ] });
+    const plan = await createPlan(api);
+    expect(plan.paymentFee).toEqual(fee);
+    const { message } = await (await api.request(`/plans/${plan.id}/approval`)).json() as { message: string };
+    expect(message).toContain(`0.01 USDT per successful payment to ${MARCO}`);
+    expect(message).toContain("Maximum service fees: 0.01 USDT");
+    expect(message).toContain("Maximum vault debit: 0.01 USDT + 20 USDC");
+    const signed = await approve(api, plan.id);
+    gateway.fee = { ...fee, recipient: LINH };
+    expect((await execute(api, plan.id, signed)).status).toBe(409);
+    expect((await api.request(`/plans/${plan.id}/approval`)).status).toBe(409);
+    expect(gateway.sent).toEqual([]);
+    gateway.fee = fee;
+    expect((await execute(api, plan.id, signed)).status).toBe(200);
+    expect(gateway.sent).toHaveLength(1);
+  });
+
+  it("requires a fresh plan when a fee-free plan would newly charge the owner", async () => {
+    const api = app();
+    const plan = await createPlan(api);
+    const signed = await approve(api, plan.id);
+    gateway.fee = fee;
+    expect((await execute(api, plan.id, signed)).status).toBe(409);
+    expect(gateway.sent).toEqual([]);
+  });
+});
+
 beforeEach(() => {
   ids = 0;
   gateway = new FakeGateway();

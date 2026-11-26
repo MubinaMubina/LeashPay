@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { type Address, type Hex } from "viem";
-import { createHistoryHandler, type HistoryPage, type HistoryReader, type PaidLog } from "@/lib/payment-history";
+import { createHistoryHandler, sentPaymentsWithFees, type HistoryPage, type HistoryReader, type PaidLog } from "@/lib/payment-history";
 import { FACTORY_DEPLOY_BLOCK } from "@/lib/recipient-logs";
 
 const address = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
@@ -34,6 +34,22 @@ function fixture(logs: PaidLog[], sessionOwner = owner) {
 }
 
 describe("confirmed LeashPay history", () => {
+  it("pairs on-chain fees with their payout and preserves net sent and received totals", async () => {
+    const outgoing = paid(1, vault, friend, usdc);
+    const charge = { ...outgoing, token: usdt as Address, amount: unit / 100n, logIndex: 2 };
+    const unrelated = { ...charge, recipient: third, amount: unit };
+    const legacy = paid(3);
+    const logs = sentPaymentsWithFees([outgoing, legacy], [charge, unrelated, { ...charge, hash: hash(2) }]);
+    const incoming = { ...paid(4, friendVault, owner), fee: { amount: unit / 100n, token: usdt as Address } };
+    const { page } = fixture([...logs, incoming]);
+    const result = await page();
+    expect(result.payments.find(p => p.logIndex === 1)).toMatchObject({ amount: String(unit), symbol: "USDC",
+      fee: { amount: String(unit / 100n), symbol: "USDT" } });
+    expect(result.payments.find(p => p.logIndex === 3)?.fee).toBeUndefined();
+    expect(result.payments.find(p => p.logIndex === 4)?.fee).toBeUndefined();
+    expect(result.totals).toEqual({ sent: { USDT: String(unit), USDC: String(unit) }, received: { USDT: String(unit), USDC: "0" } });
+  });
+
   it("keeps only finalized payments involving this owner and issued by a factory vault", async () => {
     const { page, reader } = fixture([paid(1), paid(2, friendVault, owner, usdc), paid(3, friendVault, vault),
       paid(4, thirdVault, friend), paid(5, address(99), owner), { ...paid(6), block: block + 1n }]);
