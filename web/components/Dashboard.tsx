@@ -11,6 +11,7 @@ import { Skeleton } from "./Skeleton";
 import { Chat } from "./Chat";
 import { AccessNotice, type AccessPrompt } from "./AccessNotice";
 import { MoneyActions } from "./MoneyActions";
+import { Runway } from "./Runway";
 import { useRecipientBook } from "@/lib/recipient-book";
 import { Recipients } from "./Recipients";
 
@@ -285,6 +286,8 @@ export function Dashboard({ owner, vault, access }: { owner: Address | null; vau
             <summary>Balance and rules {status}</summary>
             {vaultPanel}
           </details>}
+          {tab === "Your vault" && <Runway key={vault ?? "guest"} hasVault={Boolean(vault)}
+            onPlan={() => selectTab("Payment chat", true)} />}
           <MoneyActions active={tab === "Your vault"} />
           {access && <div ref={activation} tabIndex={-1}><AccessNotice prompt={access} /></div>}
         </section>

@@ -60,6 +60,8 @@ describe("route table", () => {
   it("only forwards the owner's vault, directory, chat and plan routes", () => {
     expect(ROUTES.map((r) => `${r.method} /api/${r.web.join("/")}`)).toEqual([
       "GET /api/vault",
+      "GET /api/runway",
+      "POST /api/runway/inclusion",
       "GET /api/directory",
       "POST /api/directory",
       "POST /api/chat",
@@ -90,6 +92,8 @@ describe("route table", () => {
 describe("owner-taking routes", () => {
   const cases = [
     { method: "GET", path: "vault", expectUrl: `${AGENT_URL}/vaults/${OWNER}` },
+    { method: "GET", path: "runway", expectUrl: `${AGENT_URL}/vaults/${OWNER}/runway` },
+    { method: "POST", path: "runway/inclusion", body: { planId: "plan-1", included: true }, expectBodyOwner: true },
     { method: "GET", path: "directory", expectUrl: `${AGENT_URL}/directory?owner=${OWNER}` },
     { method: "POST", path: "directory", body: { name: "Mai", address: STRANGER }, expectBodyOwner: true },
     { method: "POST", path: "chat", body: { message: "25 USDT", context: ["Pay Linh"] }, expectBodyOwner: true },

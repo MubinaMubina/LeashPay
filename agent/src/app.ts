@@ -14,7 +14,7 @@ import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/app
 import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
 import { toJson, type PlanJson } from "./json";
-import { buildPlan, isDue, isExecutable, planLimitNotes, type Plan } from "./plan/build";
+import { buildPlan, isCalendarDate, isDue, isExecutable, planLimitNotes, type Plan } from "./plan/build";
 import { DataFileError, DirectoryRuleError, RecipientEntrySchema, type RecipientDirectory } from "./plan/directory";
 import { PlannerError, type PlannerInput } from "./plan/planner";
 import type { PlanDraft } from "./plan/schema";
@@ -241,6 +241,30 @@ export function createApp(deps: AppDeps) {
     const vault = await deps.gateway.vaultOf(owner);
     if (!vault) return c.json({ error: "This owner has no vault yet.", owner }, 404);
     return c.json(toJson(await deps.gateway.snapshot(vault)));
+  });
+
+  app.get("/vaults/:owner/runway", async (c) => {
+    const owner = input(AddressSchema, c.req.param("owner"));
+    const vault = await deps.gateway.vaultOf(owner);
+    if (!vault) return c.json({ error: "This owner has no vault yet." }, 404);
+    const runway = await deps.journal.runway(owner, () => deps.gateway.snapshot(vault), now);
+    if (!runway) return c.json({ error: "Payments are settling. Refresh the forecast in a moment." }, 503);
+    return c.json(toJson(runway));
+  });
+
+  app.post("/runway/inclusion", async (c) => {
+    const { owner, planId, included } = input(z.object({
+      owner: AddressSchema, planId: z.string().min(1).max(80), included: z.boolean(),
+    }), await readJson(c));
+    const plan = deps.journal.plan(planId);
+    if (!plan || plan.owner !== owner || !plan.vault || plan.vault !== await deps.gateway.vaultOf(owner)) {
+      return c.json({ error: "Plan not found in your vault." }, 404);
+    }
+    if (plan.kind !== "payment" || !isCalendarDate(plan.scheduledFor)) {
+      return c.json({ error: "Choose a payment plan with a due date." }, 400);
+    }
+    deps.journal.setRunwayInclusion(plan.id, included);
+    return c.json({ included });
   });
 
   app.post("/chat", async (c) => {

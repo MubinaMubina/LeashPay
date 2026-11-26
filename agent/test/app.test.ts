@@ -207,6 +207,25 @@ describe("planning", () => {
     expect((await api.request("/vaults/not-an-address")).status).toBe(400);
   });
 
+  it("projects the owner's selected dated plans without signing or paying", async () => {
+    const api = app();
+    const instant = await createPlan(api);
+    planner.mockResolvedValue({ ...payDraft, scheduled_for: "2026-12-01", payments: payDraft.payments.slice(0, 1) });
+    const plan = await createPlan(api);
+    const include = (owner: string, planId: string) => api.request("/runway/inclusion", json({ owner, planId, included: true }));
+    expect((await include(OWNER, instant.id)).status).toBe(400);
+    expect((await include(STRANGER_ACCOUNT.address, plan.id)).status).toBe(404);
+    expect((await include(OWNER, plan.id)).status).toBe(200);
+    const response = await api.request(`/vaults/${OWNER}/runway`);
+    expect(await response.json()).toMatchObject({
+      today: "2026-11-25", end: "2026-12-24", plans: [{ id: plan.id, included: true }],
+      projection: { closing: { USDT: "4700000000000000000000" } },
+    });
+    expect(gateway.sent).toEqual([]);
+    gateway.vault = null;
+    expect((await api.request(`/vaults/${OWNER}/runway`)).status).toBe(404);
+  });
+
   it("validates input", async () => {
     const res = await app().request("/plans", json({ owner: "not-an-address", message: "" }));
     expect(res.status).toBe(400);
