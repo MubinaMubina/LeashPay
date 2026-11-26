@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "./Skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, getAddress, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
@@ -115,9 +116,8 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
 
   return (
     <>
-      <div className="label">Recipients</div>
       {loadError && <div className="sub">{loadError}</div>}
-      {list === null && !loadError && <div className="sub">…</div>}
+      {list === null && !loadError && <Skeleton label="Loading recipients" />}
       {list?.length === 0 && <div className="sub">No recipients yet.</div>}
       {list?.map((r) => (
         <div className="person" key={r.address}>

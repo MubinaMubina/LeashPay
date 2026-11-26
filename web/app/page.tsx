@@ -3,6 +3,8 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useState } from "react";
 import type { Address } from "viem";
+import { Brand } from "@/components/Brand";
+import { Skeleton } from "@/components/Skeleton";
 import { Dashboard } from "@/components/Dashboard";
 import { Onboarding } from "@/components/Onboarding";
 import { explorerAddress, shortAddress } from "@/lib/chain";
@@ -16,52 +18,48 @@ export default function Home() {
   return (
     <>
       <header className="topbar">
-        <div className="brand">
-          <div className="mark" aria-hidden>
-            L
-          </div>
-          LeashPay
+        <Brand />
+        <div className="account">
+          <span className="net">BSC testnet</span>
+          {authenticated && (
+            <>
+              <button className="avatar" popoverTarget="owner-menu" aria-label="Account menu">
+                {user?.email?.address?.slice(0, 1).toUpperCase() || "L"}
+              </button>
+              <div popover="auto" id="owner-menu" className="account-menu">
+                {user?.email?.address && <span>{user.email.address}</span>}
+                {owner && <a href={explorerAddress(owner.address)} target="_blank" rel="noreferrer">{shortAddress(owner.address)} ↗</a>}
+                <button className="link" onClick={logout}>Log out</button>
+              </div>
+            </>
+          )}
         </div>
-        {authenticated && (
-          <div className="account">
-            <span>{user?.email?.address}</span>
-            {owner && (
-              <a href={explorerAddress(owner.address)} target="_blank" rel="noreferrer">
-                {shortAddress(owner.address)}
-              </a>
-            )}
-            <span className="net">BSC testnet</span>
-            <button className="link" onClick={logout}>
-              Log out
-            </button>
-          </div>
-        )}
       </header>
 
       {/* Once the vault is ready the dashboard replaces the centered area entirely. */}
       {authenticated && owner && vault ? (
         <Dashboard vault={vault} />
       ) : (
-      <main className="center">
-        {!ready ? (
-          <p className="hint">Loading…</p>
-        ) : !authenticated ? (
-          <section className="card intro">
-            <h1>An AI payments agent on a leash</h1>
-            <p>
-              The agent plans your payouts. Your vault decides what it may pay: only your recipients, within your
-              caps, and only after you sign.
-            </p>
-            <button className="btn" onClick={login}>
-              Log in with email
-            </button>
-          </section>
-        ) : !owner ? (
-          <p className="hint">Creating your wallet…</p>
-        ) : (
-          <Onboarding owner={owner.address as Address} onReady={setVault} />
-        )}
-      </main>
+        <main className="center">
+          {!ready ? (
+            <Skeleton label="Loading LeashPay" variant="intro" />
+          ) : !authenticated ? (
+            <section className="card intro">
+              <h1>An AI payments agent on a leash</h1>
+              <p>
+                The agent plans your payouts. Your vault decides what it may pay: only your recipients, within your
+                caps, and only after you sign.
+              </p>
+              <button className="btn" onClick={login}>
+                Log in with email
+              </button>
+            </section>
+          ) : !owner ? (
+            <Skeleton label="Creating your wallet" variant="intro" />
+          ) : (
+            <Onboarding owner={owner.address as Address} onReady={setVault} />
+          )}
+        </main>
       )}
     </>
   );

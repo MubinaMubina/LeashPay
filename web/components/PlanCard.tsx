@@ -35,7 +35,7 @@ type Run =
   | { kind: "failed"; error: string };
 
 /**
- * One plan: each payment with the vault's verdict, then "Approve with my wallet". The card
+ * One plan: each payment with the vault's verdict, then "Approve with wallet". The card
  * turns into the receipt in place. Retry and Check again always fetch a fresh approval and
  * run the same plan id (D16): the agent settles or skips what already went through, so
  * nothing is paid twice.
@@ -138,12 +138,22 @@ export function PlanCard({
   const everPaid = rows.some(({ status }) => status.label === "Paid ✓");
   const busy = run.kind === "signing" || run.kind === "running";
 
+  const totals = new Map<string, bigint>();
+  for (const payment of plan.payments) {
+    if (payment.amount !== null) totals.set(payment.token, (totals.get(payment.token) ?? 0n) + BigInt(payment.amount));
+  }
+  const allPaid = rows.length > 0 && rows.every(({ status }) => status.label === "Paid ✓");
+  let title = plan.kind === "payment" ? "Payout plan" : "Agent response";
+  if (everPaid) title = allPaid ? "Payout receipt" : "Payment progress · requested amounts";
   return (
     <div className="card plan">
-      <h4>{everPaid ? "Payments" : plan.kind === "payment" ? `Plan for ${plan.payments.length} payment${plan.payments.length === 1 ? "" : "s"}` : "Not a payment"}</h4>
-      <div className="meta">
-        ref {shortAddress(plan.ref)} · {plan.scheduledFor === "now" ? "pay now" : `scheduled for ${plan.scheduledFor}`}
-      </div>
+      <div className="plan-caption">{title}</div>
+      {totals.size > 0 && <h2 className="plan-total">
+        {Array.from(totals, ([token, total]) => formatAmount(total.toString(), token)).join(" + ")}
+      </h2>}
+      {plan.kind === "payment" && <p className="meta">
+        {plan.payments.length} payment{plan.payments.length === 1 ? "" : "s"} · {plan.scheduledFor === "now" ? "Pay now" : `Scheduled for ${plan.scheduledFor}`}
+      </p>}
 
       {rows.map(({ payment, status }, i) => (
         <div className="row" key={i}>
@@ -166,7 +176,7 @@ export function PlanCard({
                 {status.label} · BscScan ↗
               </a>
             ) : (
-              status.label
+              status.label === "Vault check passes" ? "✓ Within limits" : status.label
             )}
           </span>
           {(status.detail || payment.warnings.length > 0) && (
@@ -175,11 +185,19 @@ export function PlanCard({
         </div>
       ))}
 
-      {quotedAt && <div className="meta fx-source">Local amounts: CoinMarketCap rate from {readingTime(quotedAt)}, for information; the vault pays the coin amount.</div>}
+      {plan.depeg && (!plan.depeg.available || plan.depeg.chosenToken === "USDT") && (
+        <p className="notice">{plan.depeg.note || (plan.depeg.available ? "USDT selected by the depeg guard." : plan.depeg.reason)}</p>
+      )}
+      {plan.memory?.writeError && <p className="memory-warn">Saving new memories is unavailable.</p>}
+      <details className="plan-checks">
+        <summary>View checks</summary>
+        <div className="meta">Plan reference {shortAddress(plan.ref)}</div>
+        {quotedAt && <div className="meta fx-source">Local amounts: CoinMarketCap rate from {readingTime(quotedAt)}, for information; the vault pays the coin amount.</div>}
 
-      {plan.depeg && <DepegBox depeg={plan.depeg} />}
+        {plan.depeg && <DepegBox depeg={plan.depeg} />}
 
-      {plan.memory && <MemoryBox memory={plan.memory} />}
+        {plan.memory && <MemoryBox memory={plan.memory} />}
+      </details>
 
       {notes.length > 0 && (
         <ul className="notes">
@@ -229,7 +247,7 @@ export function PlanCard({
           ) : (
             payable && (
               <button className="btn" onClick={approve} disabled={busy}>
-                {run.kind === "signing" ? "Waiting for your wallet…" : run.kind === "running" ? "Paying…" : run.kind === "failed" ? "Try again" : "Approve with my wallet"}
+                {run.kind === "signing" ? "Waiting for your wallet…" : run.kind === "running" ? "Paying…" : run.kind === "failed" ? "Try again" : "Approve with wallet"}
               </button>
             )
           )}

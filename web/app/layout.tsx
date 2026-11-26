@@ -1,7 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 import "./globals.css";
+
+export const viewport: Viewport = { interactiveWidget: "resizes-content", viewportFit: "cover" };
 
 export const metadata: Metadata = {
   title: "LeashPay",
