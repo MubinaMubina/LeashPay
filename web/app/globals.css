@@ -178,6 +178,10 @@ button, input, select { font-family: inherit; }
 .estimate-heading button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 .transfer-estimate output { display: block; margin: 4px 0; color: var(--ink); font-size: 20px; font-weight: 650; overflow-wrap: anywhere; }
 .transfer-estimate p { margin: 0; color: var(--ink-3); font-size: 12px; }
+.transfer-fees { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; }
+.transfer-fees div { display: flex; justify-content: space-between; gap: 12px; }
+.transfer-fees dt { color: var(--ink-2); }
+.transfer-fees dd { margin: 0; font-weight: 600; }
 .transfer-route { margin: 16px 0; }
 .transfer-route > div { position: relative; display: grid; grid-template-columns: 45px 1fr; gap: 8px; align-items: baseline; padding: 7px 0 7px 24px; }
 .transfer-route > div::before { content: ""; position: absolute; top: 50%; left: 3px; width: 8px; height: 8px; transform: translateY(-50%); background: var(--panel); border: 1.5px solid var(--ink-3); border-radius: 50%; z-index: 1; }

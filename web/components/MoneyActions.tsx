@@ -3,10 +3,12 @@
 import { useEffect, useId, useState } from "react";
 import { MAX_QUOTE_AGE_MS, type FxRates } from "@/lib/fx";
 import { readingTime } from "@/lib/depeg";
+import { estimateBankTransfer, PREVIEW_FEE_PERCENT } from "@/lib/transfer-estimate";
 
 type Stablecoin = "USDT" | "USDC";
 const quantity = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const price = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 /** The amount stays local. One public USD quote covers both coins and both directions. */
 function useUsdQuote(enabled: boolean) {
@@ -44,6 +46,7 @@ export function MoneyActions({ active }: { active: boolean }) {
   const [coin, setCoin] = useState<Stablecoin>("USDT");
   const dollars = Number(amount);
   const showEstimate = active && dollars > 0;
+  const transfer = showEstimate ? estimateBankTransfer(dollars, direction) : null;
   const rates = useUsdQuote(showEstimate);
   const deposit = direction === "deposit";
   const id = useId();
@@ -74,7 +77,7 @@ export function MoneyActions({ active }: { active: boolean }) {
         <span>USD</span>
       </div>
     </div>
-    {showEstimate && <section className="transfer-estimate" aria-label="Stablecoin estimate">
+    {transfer && <section className="transfer-estimate" aria-label="Stablecoin estimate">
       <div className="estimate-heading">
         <span>{deposit ? "Estimated to your vault" : "Estimated from your vault"}</span>
         <div role="group" aria-label="Stablecoin">
@@ -82,9 +85,13 @@ export function MoneyActions({ active }: { active: boolean }) {
             onClick={() => setCoin(token)}>{token}</button>)}
         </div>
       </div>
-      <output htmlFor={id}>{rates === undefined ? "Getting rate…" : `≈ ${quantity.format(dollars / (rates?.[coin] ?? 1))} ${coin}`}</output>
-      {rates && <p>1 {coin} ≈ ${price.format(rates[coin])} · CoinMarketCap · <time dateTime={rates.quotedAt}>{readingTime(rates.quotedAt)}</time> · Before fees</p>}
-      {rates === null && <p>Example at $1 per {coin}. Market rate unavailable. Before fees.</p>}
+      <output htmlFor={id}>{rates === undefined ? "Getting rate…" : `≈ ${quantity.format(transfer.vaultUsd / (rates?.[coin] ?? 1))} ${coin}`}</output>
+      {rates && <p>1 {coin} ≈ ${price.format(rates[coin])} · CoinMarketCap · <time dateTime={rates.quotedAt}>{readingTime(rates.quotedAt)}</time></p>}
+      {rates === null && <p>Example at $1 per {coin}. Market rate unavailable.</p>}
+      <dl className="transfer-fees">
+        <div><dt>Illustrative transfer fee ({PREVIEW_FEE_PERCENT}%)</dt><dd>{transfer.feeUsd > 0 && (deposit ? "−" : "+")}{usd.format(transfer.feeUsd)}</dd></div>
+        <div><dt>{deposit ? "Deposit after fee" : "Total from your vault"}</dt><dd>{usd.format(transfer.vaultUsd)}</dd></div>
+      </dl>
     </section>}
     <dl className="transfer-route" aria-label="Transfer route">
       <div><dt>From</dt><dd>{deposit ? bank : vault}</dd></div>
