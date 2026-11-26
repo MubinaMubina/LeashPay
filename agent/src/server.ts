@@ -2,6 +2,7 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app";
+import { selectChatCard } from "./chat";
 import { ViemVaultGateway, createChainClients } from "./chain/viem-gateway";
 import { claudeApiKey, isLoopback, loadConfig, localHostHeaders } from "./config";
 import { Executor } from "./execution/executor";
@@ -32,6 +33,7 @@ const brain =
 const app = createApp({
   gateway,
   planner: (input) => draftPlan(anthropic, config.ANTHROPIC_MODEL, input),
+  chat: (input) => selectChatCard(anthropic, config.ANTHROPIC_MODEL, input),
   directory,
   journal,
   executor,

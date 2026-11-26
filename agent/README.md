@@ -91,8 +91,9 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 |---|---|
 | `GET /health` | `{ ok, agent }`. Never needs the API token. |
 | `GET /directory?owner=0x…` | That owner's recipient directory (names, addresses, country, currency, preferred coin). |
-| `POST /directory` | Adds or updates one of the owner's recipients: `{ owner, name, address, country?, currency?, preferredToken? }`. Names are unique per owner, at most 60 characters, on one line; an owner keeps at most 200 recipients. |
+| `POST /directory` | Adds or updates one of the owner's recipients: `{ owner, name, address, country?, currency?, preferredToken?, createOnly? }`. With `createOnly: true`, repeating the same name and address is safe and a conflicting mapping returns 409. Names are unique per owner, at most 60 characters, on one line; an owner keeps at most 200 recipients. |
 | `GET /vaults/:owner` | The owner's vault: owner, agent, paused, rules, today's spend and swaps, balances. 404 if they have none. |
+| `POST /chat` | Accepts `{ owner, message, context? }`. Claude selects a help, balance, recipients, add, clarification or payment card. Context contains up to six earlier messages from the owner's pending payment. For a complete payment the result contains the owner's words to submit to `POST /plans`. The route itself only selects the next action. |
 | `POST /plans` | `{ owner, message, depegThreshold? }` → a plan with warnings, notes and the vault's simulated verdict per payment. `depegThreshold` is the owner's depeg limit in percent (0 to 100, default 5); the plan's `depeg` field holds the guard's decision, each payment's `local` its amount in the recipient's currency, and `memory` what Living Brain recalled. Sends nothing. |
 | `GET /plans/:id` | The plan and every journal event for it. |
 | `GET /plans/:id/approval` | `{ message, expires, payEarly }`: the text the owner's wallet signs to run the plan, valid 10 minutes. Add `?payEarly=true` to run a dated plan before its day. |

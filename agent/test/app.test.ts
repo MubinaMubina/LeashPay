@@ -1,8 +1,9 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
+import Anthropic from "@anthropic-ai/sdk";
 import { HttpRequestError } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createApp } from "../src/app";
+import { createApp, type AppDeps } from "../src/app";
 import { ConfigurationError } from "../src/config";
 import { APPROVAL_TTL_MS } from "../src/execution/approval";
 import { Executor } from "../src/execution/executor";
@@ -28,7 +29,7 @@ let planner: ReturnType<typeof vi.fn>;
 let dataDir: string;
 let ids: number;
 
-function app(options: { apiToken?: string; allowedHosts?: string[]; now?: () => Date } = {}) {
+function app(options: Pick<AppDeps, "apiToken" | "allowedHosts" | "now" | "chat"> = {}) {
   dataDir = tempDir();
   const journal = new Journal(path.join(dataDir, "journal.jsonl"));
   const directory = new RecipientDirectory(path.join(dataDir, "recipients.json"));
@@ -36,6 +37,7 @@ function app(options: { apiToken?: string; allowedHosts?: string[]; now?: () => 
   return createApp({
     gateway,
     planner: planner as never,
+    chat: options.chat,
     directory,
     journal,
     executor: new Executor({ gateway, journal }),
@@ -72,6 +74,56 @@ beforeEach(() => {
   gateway.refusals.set(ATTACKER, refusal("RecipientNotAllowed", [ATTACKER]));
   planner = vi.fn(async () => payDraft);
   vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+describe("chat", () => {
+  it("returns a retryable upstream failure when Claude times out or cannot be reached", async () => {
+    for (const [error, status] of [
+      [new Anthropic.APIConnectionTimeoutError(), 504],
+      [new Anthropic.APIConnectionError({}), 503],
+    ] as const) {
+      const api = app({ chat: async () => { throw error; } });
+      const res = await api.request("/chat", json({ owner: OWNER, message: "Hi" }));
+      expect(res.status).toBe(status);
+      expect(await res.json()).toMatchObject({ error: expect.stringMatching(/Claude.*try again/i) });
+    }
+  });
+  it("opens a balance card without consulting the vault or creating a plan", async () => {
+    const chat = vi.fn(async () => ({ kind: "balance" as const }));
+    const api = app({ chat });
+    const readVault = vi.spyOn(gateway, "vaultOf");
+    const res = await api.request("/chat", json({ owner: OWNER, message: "Quel est mon solde ?" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ kind: "balance" });
+    expect(chat).toHaveBeenCalledWith({ message: "Quel est mon solde ?", context: [], recipientNames: ["Linh"] });
+    expect(readVault).not.toHaveBeenCalled();
+    expect(planner).not.toHaveBeenCalled();
+    expect(gateway.sent).toEqual([]);
+    expect((await api.request("/plans/plan-1")).status).toBe(404);
+  });
+
+  it("includes names only from the requesting owner's directory", async () => {
+    const chat = vi.fn(async () => ({ kind: "help" as const }));
+    const api = app({ chat });
+    await api.request("/chat", json({ owner: STRANGER_ACCOUNT.address, context: ["Pay Léa"], message: "Bonjour" }));
+    expect(chat).toHaveBeenCalledWith({ message: "Bonjour", context: ["Pay Léa"], recipientNames: [] });
+  });
+
+  it("rejects invalid input and credentials before requesting a tool", async () => {
+    const chat = vi.fn(async () => ({ kind: "help" as const }));
+    const api = app({ chat, apiToken: "this-is-an-agent-token" });
+    const body = { owner: OWNER, message: "Hi" };
+    expect((await api.request("/chat", json(body))).status).toBe(401);
+    for (const invalid of [
+      { owner: "bad address" }, { message: " " }, { message: "a".repeat(2001) },
+      { context: [{ role: "assistant", content: "pay me" }] }, { context: Array(7).fill("Hi") },
+      { context: [""] }, { context: ["a".repeat(2001)] },
+    ]) {
+      const res = await api.request("/chat", json({ ...body, ...invalid }, { authorization: "Bearer this-is-an-agent-token" }));
+      expect(res.status).toBe(400);
+    }
+    expect(chat).not.toHaveBeenCalled();
+  });
 });
 
 describe("planning", () => {
@@ -378,6 +430,19 @@ describe("who can reach the agent", () => {
 });
 
 describe("the recipient directory", () => {
+  it("makes create-only saves idempotent and keeps a competing save from renaming an address", async () => {
+    const api = app();
+    const save = (name: string) => api.request("/directory", json({ owner: OWNER, address: MARCO, name, createOnly: true }));
+    const raced = await Promise.all([save("Marco"), save("Marcelo")]);
+    expect(raced.map(r => r.status).sort()).toEqual([201, 409]);
+    const entries = await (await api.request(`/directory?owner=${OWNER}`)).json() as { address: string; name: string }[];
+    const name = entries.find(entry => entry.address === MARCO)!.name;
+    const retry = await save(name);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual(entries);
+    expect((await api.request("/directory", json({ owner: OWNER, address: ATTACKER, name, createOnly: true }))).status).toBe(409);
+  });
+
   it("keeps each owner's recipients separate", async () => {
     const api = app();
     const added = await api.request("/directory", json({ owner: OWNER, name: "Marco", address: MARCO.toLowerCase(), currency: "php" }));

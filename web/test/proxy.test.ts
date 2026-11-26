@@ -57,11 +57,12 @@ async function send(agent: ReturnType<typeof fakeAgent>, method: string, path: s
 }
 
 describe("route table", () => {
-  it("has exactly the 8 routes of the design, so nothing else can reach the agent", () => {
+  it("only forwards the owner's vault, directory, chat and plan routes", () => {
     expect(ROUTES.map((r) => `${r.method} /api/${r.web.join("/")}`)).toEqual([
       "GET /api/vault",
       "GET /api/directory",
       "POST /api/directory",
+      "POST /api/chat",
       "POST /api/plans",
       "GET /api/plans/:id",
       "GET /api/plans/:id/approval",
@@ -90,6 +91,7 @@ describe("owner-taking routes", () => {
     { method: "GET", path: "vault", expectUrl: `${AGENT_URL}/vaults/${OWNER}` },
     { method: "GET", path: "directory", expectUrl: `${AGENT_URL}/directory?owner=${OWNER}` },
     { method: "POST", path: "directory", body: { name: "Mai", address: STRANGER }, expectBodyOwner: true },
+    { method: "POST", path: "chat", body: { message: "25 USDT", context: ["Pay Linh"] }, expectBodyOwner: true },
     { method: "POST", path: "plans", body: { message: "Pay Linh 1" }, expectBodyOwner: true },
   ] as const;
 

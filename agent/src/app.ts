@@ -4,6 +4,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from "viem";
 import { z } from "zod";
+import { CHAT_MESSAGE_LIMIT, type ChatDecision, type ChatInput } from "./chat";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
 import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
 import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegDecision, type DepegGuard } from "./depeg/guard";
@@ -22,6 +23,7 @@ import { AddressSchema } from "./validation";
 export interface AppDeps {
   gateway: VaultGateway;
   planner: (input: PlannerInput) => Promise<PlanDraft>;
+  chat?: (input: ChatInput) => Promise<ChatDecision>;
   directory: RecipientDirectory;
   journal: Journal;
   executor: Executor;
@@ -86,14 +88,21 @@ function depegNote(decision: DepegDecision, plan: Plan): string {
   return `Depeg guard: Cournot puts USDC's depeg risk at ${percent(decision.probability)} (reading from ${at} UTC), ${side} your ${decision.threshold}% limit, so ${coins}.`;
 }
 
+const OwnerMessage = z.string().trim().min(1).max(CHAT_MESSAGE_LIMIT);
+const ChatBody = z.strictObject({
+  owner: AddressSchema,
+  message: OwnerMessage,
+  context: z.array(OwnerMessage).max(6).default([]),
+});
+
 const CreatePlanBody = z.object({
   owner: AddressSchema,
-  message: z.string().trim().min(1).max(2000),
+  message: OwnerMessage,
   /** The owner's depeg limit in percent: above it, the guard pays in USDT instead of USDC. */
   depegThreshold: z.number().min(0).max(100).optional(),
 });
 
-const DirectoryBody = RecipientEntrySchema.extend({ owner: AddressSchema });
+const DirectoryBody = RecipientEntrySchema.extend({ owner: AddressSchema, createOnly: z.boolean().optional() });
 
 /** The owner's signed approval, from GET /plans/:id/approval and the owner's wallet. */
 const ExecuteBody = z.object({
@@ -190,7 +199,16 @@ export function createApp(deps: AppDeps) {
   });
 
   app.post("/directory", async (c) => {
-    const { owner, ...entry } = input(DirectoryBody, await readJson(c));
+    const { owner, createOnly, ...entry } = input(DirectoryBody, await readJson(c));
+    // The server holds a process lock on its data directory. Keep this check and upsert synchronous.
+    if (createOnly) {
+      const entries = deps.directory.list(owner);
+      const current = entries.find((recipient) => recipient.address === entry.address);
+      if (current) {
+        if (current.name.toLowerCase() === entry.name.toLowerCase()) return c.json(entries);
+        throw new DirectoryRuleError(`This address was already saved as ${current.name}. Review the recipients list.`);
+      }
+    }
     const saved = deps.directory.upsert(owner, entry);
     void deps.memory?.remember(noteForRecipient(owner, entry));
     return c.json(saved, 201);
@@ -201,6 +219,19 @@ export function createApp(deps: AppDeps) {
     const vault = await deps.gateway.vaultOf(owner);
     if (!vault) return c.json({ error: "This owner has no vault yet.", owner }, 404);
     return c.json(toJson(await deps.gateway.snapshot(vault)));
+  });
+
+  app.post("/chat", async (c) => {
+    const { owner, message, context } = input(ChatBody, await readJson(c));
+    if (!deps.chat) throw new ConfigurationError("Chat is unavailable in this agent.");
+    let recipientNames: string[] | null = null;
+    try {
+      recipientNames = deps.directory.list(owner).map(({ name }) => name);
+    } catch (err) {
+      // Help and balance still work when the directory is unavailable. Its reader reports the failure on its card.
+      if (!(err instanceof DataFileError)) throw err;
+    }
+    return c.json(await deps.chat({ message, context, recipientNames }));
   });
 
   // Owner's message in, reviewed plan out. Nothing is sent on-chain here: each
@@ -343,6 +374,10 @@ export function createApp(deps: AppDeps) {
     }
     if (err instanceof ConfigurationError) return c.json({ error: err.message }, 503);
     if (err instanceof PlannerError) return c.json({ error: err.message }, 502);
+    if (c.req.path === "/chat" && err instanceof Anthropic.APIConnectionError) {
+      if (err instanceof Anthropic.APIConnectionTimeoutError) return c.json({ error: "Claude took too long to answer. Try again." }, 504);
+      return c.json({ error: "Could not reach Claude. Try again in a moment." }, 503);
+    }
     if (err instanceof Anthropic.AuthenticationError) {
       return c.json({ error: "The Claude API key is missing or invalid. Set ANTHROPIC_API_KEY in .env." }, 502);
     }

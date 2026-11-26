@@ -8,7 +8,8 @@ import { errorText, useApi, useSendAndWait } from "@/lib/client";
 import { parseStoredThreshold } from "@/lib/depeg";
 import { formatAmount } from "@/lib/plan-progress";
 import { Chat } from "./Chat";
-import { Recipients } from "./Recipients";
+import { Recipients, useRecipientBook } from "./Recipients";
+import styles from "./DashboardChat.module.css";
 
 interface VaultJson {
   vault: string;
@@ -65,8 +66,10 @@ const REACTION_MS = 4_000;
  * key can't unpause. The column reacts to what the chat does, so the jury sees the chat and
  * the vault as one machine.
  */
-export function Dashboard({ vault }: { vault: Address }) {
+export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) {
   const api = useApi();
+  const book = useRecipientBook(vault);
+  const recipientSection = useRef<HTMLElement>(null);
   const sendAndWait = useSendAndWait();
   const [info, setInfo] = useState<VaultJson | null>(null);
   const [agentDown, setAgentDown] = useState(false);
@@ -124,9 +127,17 @@ export function Dashboard({ vault }: { vault: Address }) {
 
   const spent = info ? Number((BigInt(info.spentToday) * 1000n) / BigInt(info.rules.dailyCap)) / 10 : 0;
   const paused = info?.paused ?? false;
+  const agent = info ? (info.agent ? getAddress(info.agent) : null) : undefined;
+
+  function viewAllRecipients() {
+    const list = recipientSection.current;
+    if (!list) return;
+    list.focus({ preventScroll: true });
+    list.scrollIntoView({ block: "nearest" });
+  }
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard ${styles.layout}`}>
       <aside className="vault-col">
         <div className="vault-scroll">
           <div className="label">Vault balance</div>
@@ -180,7 +191,9 @@ export function Dashboard({ vault }: { vault: Address }) {
           />
           <div className="sub">Cournot's USDC depeg risk is checked before each plan. Applies to the next plan you send.</div>
 
-          <Recipients vault={vault} agent={info ? (info.agent ? getAddress(info.agent) : null) : undefined} />
+          <section ref={recipientSection} aria-label="All recipients" tabIndex={-1}>
+            <Recipients vault={vault} agent={agent} book={book} />
+          </section>
         </div>
 
         {/* Pinned to the bottom so it is never scrolled away. */}
@@ -197,9 +210,10 @@ export function Dashboard({ vault }: { vault: Address }) {
       </aside>
 
       <div className="main-col">
-        {agentDown && <div className="banner">The agent isn't running on this laptop. Start it with npm start in agent/.</div>}
+        {agentDown && <div className="banner" role="status">Can’t reach the payment agent. Try again in a moment.</div>}
         {paused && <div className="banner">Vault paused. The agent can't pay anyone until you unpause. You can still withdraw.</div>}
-        <Chat onSettled={onSettled} onAgentDown={() => setAgentDown(true)} depegThreshold={depegThreshold} />
+        <Chat owner={owner} vault={vault} agent={agent} book={book} onViewAll={viewAllRecipients}
+          onSettled={onSettled} onAgentDown={() => setAgentDown(true)} depegThreshold={depegThreshold} />
       </div>
     </div>
   );

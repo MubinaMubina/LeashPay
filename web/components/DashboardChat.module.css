@@ -1,0 +1,27 @@
+.layout > * {
+  min-width: 0;
+}
+
+/* A full-list link in the chat must also reach the vault panel on a phone. */
+@media (max-width: 700px) {
+  .layout:global(.dashboard) {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+
+  .layout > :global(.main-col) {
+    order: -1;
+    height: calc(100svh - 60px);
+    min-height: 360px;
+  }
+
+  .layout :global(.log),
+  .layout :global(.composer-wrap) {
+    padding-inline: 14px;
+  }
+
+  .layout :global(.composer input) {
+    min-width: 0;
+  }
+}

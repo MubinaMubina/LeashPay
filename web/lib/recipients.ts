@@ -3,16 +3,6 @@ import { DEMO_ATTACK_ADDRESS } from "./demo";
 import { FX_CURRENCIES } from "./fx";
 
 /**
- * Adding a recipient from the dashboard. Two writes, in this order:
- *
- *   1. vault.setRecipient(address, true, monthlyCap)   owner's wallet: who can be paid, and how much
- *   2. POST /api/directory { name, address, ... }      the agent's address book: who "Ramon" is
- *
- * The vault is first so the agent never knows a name the vault would refuse. Both writes
- * can be repeated safely, so an add interrupted between them is finished by submitting again.
- */
-
-/**
  * Local currencies the owner can pick: the ones the app shows rates for, plus USD for
  * no conversion (the coins already track the dollar).
  */
@@ -68,6 +58,7 @@ export function checkNewRecipient(form: RecipientForm, existing: ListedRecipient
   const name = form.name.trim();
   if (!name) return fail("Give the recipient a name, so you can say \"Pay Ramon 50\".");
   if (name.length > NAME_MAX) return fail(`Keep the name under ${NAME_MAX} characters.`);
+  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(name)) return fail("Use a name without line breaks or invisible characters.");
 
   const rawAddress = form.address.trim();
   if (!isAddress(rawAddress, { strict: false })) return fail("That isn't a wallet address. It starts with 0x and has 40 more characters.");
@@ -80,12 +71,14 @@ export function checkNewRecipient(form: RecipientForm, existing: ListedRecipient
   if (same(reserved.owner)) return fail("That's your own wallet. You can withdraw from the vault at any time instead.");
 
   const current = existing.find((r) => same(r.address));
-  if (current?.onChain?.allowed) return fail(`${current.name} already has this address.`);
+  if (current && current.name.toLowerCase() !== name.toLowerCase()) return fail(`${current.name} already has this address. Review the name and address.`);
   const clash = existing.find((r) => !same(r.address) && r.name.toLowerCase() === name.toLowerCase());
   if (clash) return fail(`You already have a recipient named ${clash.name}. Use a different name.`);
+  if (!current && existing.length >= 200) return fail("Your directory already has the maximum of 200 recipients.");
 
   const country = form.country.trim();
   if (country.length > COUNTRY_MAX) return fail(`Keep the country under ${COUNTRY_MAX} characters.`);
+  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(country)) return fail("Use a country without line breaks or invisible characters.");
 
   const currency = CURRENCIES.find((c) => c === form.currency);
   if (!currency) return fail(`Pick a currency: ${CURRENCIES.join(", ")}.`);
@@ -97,4 +90,79 @@ export function checkNewRecipient(form: RecipientForm, existing: ListedRecipient
   if (monthlyCap > CAP_MAX) return fail("That monthly cap is too large.");
 
   return { ok: true, recipient: { name, address, ...(country ? { country } : {}), currency, monthlyCap } };
+}
+
+export interface RecipientReview {
+  recipient: NewRecipient;
+  alreadyNamed: boolean;
+  allowed: boolean;
+  currentCap: bigint;
+  action: "authorize" | "save-name" | "done";
+}
+
+interface RecipientReads {
+  directory: () => Promise<ListedRecipient[] | null>;
+  authorization: (address: Address) => Promise<ListedRecipient["onChain"]>;
+}
+
+/** Both entry points read the directory and the target's actual authorization, including unnamed addresses. */
+export async function reviewRecipient(form: RecipientForm, reserved: Reserved, reads: RecipientReads): Promise<RecipientReview> {
+  const directory = await reads.directory();
+  if (!directory) throw new Error("Couldn't verify the recipient directory. Try again.");
+  const checked = checkNewRecipient(form, directory, reserved);
+  if (!checked.ok) throw new Error(checked.error);
+  const { recipient } = checked;
+  const entry = directory.find((r) => r.address.toLowerCase() === recipient.address.toLowerCase());
+  const authorization = entry ? entry.onChain : await reads.authorization(recipient.address);
+  if (!authorization) throw new Error("Couldn't verify this address in your vault. Try again.");
+  const { allowed, monthlyCap } = authorization;
+  const needsWallet = !allowed || monthlyCap !== recipient.monthlyCap;
+  return {
+    recipient,
+    alreadyNamed: Boolean(entry),
+    allowed,
+    currentCap: monthlyCap,
+    action: needsWallet ? "authorize" : entry ? "done" : "save-name",
+  };
+}
+
+type SaveOutcome =
+  | { kind: "added" }
+  | { kind: "changed"; review: RecipientReview }
+  | { kind: "retry-name"; review: RecipientReview; error: string };
+
+interface RecipientWrites {
+  /** Resolves only after a successful receipt. */
+  authorize: (recipient: NewRecipient) => Promise<void>;
+  saveName: (recipient: NewRecipient) => Promise<void>;
+}
+
+/** A signature always applies to the state the owner reviewed. A name-only retry stays name-only. */
+export async function saveReviewedRecipient(
+  reviewed: RecipientReview,
+  inspect: () => Promise<RecipientReview>,
+  writes: RecipientWrites,
+): Promise<SaveOutcome> {
+  const fresh = await inspect();
+  if (fresh.action === "done") return { kind: "added" };
+  if (fresh.action !== reviewed.action || fresh.currentCap !== reviewed.currentCap ||
+      fresh.allowed !== reviewed.allowed || fresh.alreadyNamed !== reviewed.alreadyNamed) {
+    return { kind: "changed", review: fresh };
+  }
+  const { recipient } = fresh;
+  const needsWallet = fresh.action === "authorize";
+  if (needsWallet) await writes.authorize(recipient);
+  const authorized: RecipientReview = { ...fresh, allowed: true, currentCap: recipient.monthlyCap, action: fresh.alreadyNamed ? "done" : "save-name" };
+  try {
+    if (needsWallet) {
+      // The wallet may have been open long enough for another tab to change the directory.
+      const afterReceipt = await inspect();
+      if (afterReceipt.action === "done") return { kind: "added" };
+      if (afterReceipt.action !== "save-name") return { kind: "changed", review: afterReceipt };
+    }
+    await writes.saveName(recipient);
+    return { kind: "added" };
+  } catch (cause) {
+    return { kind: "retry-name", review: authorized, error: cause instanceof Error ? cause.message : String(cause) };
+  }
 }

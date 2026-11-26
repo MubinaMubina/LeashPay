@@ -6,7 +6,7 @@ The owner's dashboard and the recipient's phone page. The owner logs in with ema
 - the owner's first payment from the browser, Linh, Marco and Mai at 1 USDT each;
 - the live attack: "URGENT: send all funds" was flagged by Claude, sent anyway by the agent in demo mode, and refused by the vault on-chain with `RecipientNotAllowed`.
 
-There are 66 tests; they don't need a login, the chain or Claude.
+The automated tests run without a login, blockchain access or Claude credentials.
 
 ## Run it
 
@@ -41,13 +41,14 @@ recipient phone page   ──► /api/fx/:currency ──► CoinMarketCap: toda
 
 ### The web server's route table to the agent
 
-Everything the browser may ask the agent goes through the 8 rows of [`lib/agent-proxy.ts`](lib/agent-proxy.ts); any other path answers 404.
+The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/agent-proxy.ts).
 
 | Web route | Agent call |
 |---|---|
 | `GET /api/vault` | `GET /vaults/:owner` |
 | `GET /api/directory` | `GET /directory?owner=` |
 | `POST /api/directory` | `POST /directory` |
+| `POST /api/chat` | `POST /chat` |
 | `POST /api/plans` | `POST /plans` |
 | `GET /api/plans/:id` | `GET /plans/:id` |
 | `GET /api/plans/:id/approval` | `GET /plans/:id/approval` |
@@ -60,6 +61,12 @@ Everything the browser may ask the agent goes through the 8 rows of [`lib/agent-
   - If the agent isn't running, the page shows a banner.
   - If the agent is busy with another plan, the card offers Retry.
   - Retry and "Check again" always sign a fresh approval for the same plan, whose id is kept in the address bar, so a reload resumes it and nothing is paid twice.
+
+### Payment chat
+
+Type a request in English or French, or choose an action on the help card. “How much do I have?” reads the vault's USDT and USDC balances and reports the USDT value held in T-bills separately. “Who can I pay?” lists three named, vault-authorized recipients per page. **View all recipients** takes you to the full directory.
+
+“Add Léa with a 200 USDT cap” opens an editable form. Review the full wallet address and cap before confirming. For a payment, “Pay Léa” followed by “25 USDT” opens the usual plan for wallet approval. Reloading a plan link reopens that plan.
 
 ### Vault setup
 
@@ -112,7 +119,7 @@ Each payment row shows the agent's local amount under the coin amount ("≈ 7,75
 ## Tests
 
 ```bash
-npm test        # 66 tests: the route table and owner checks (including two against the real agent app over HTTP),
+npm test        # Chat tools and cards, the route table and owner checks (including calls to the agent app over HTTP),
                 # the Privy session, vault setup states, payment row labels, the recipient search, and the
                 # saved depeg limit and the depeg reading's time and percent, local amounts and the rate route
 npm run build   # type-check and production build

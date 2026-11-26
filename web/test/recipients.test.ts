@@ -1,7 +1,9 @@
 import { getAddress, parseUnits, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import { DEMO_ATTACK_ADDRESS, DEMO_RECIPIENTS } from "@/lib/demo";
-import { checkNewRecipient, type ListedRecipient, type RecipientForm, type Reserved } from "@/lib/recipients";
+import {
+  checkNewRecipient, reviewRecipient, saveReviewedRecipient, type ListedRecipient, type NewRecipient, type RecipientForm, type Reserved,
+} from "@/lib/recipients";
 
 const RESERVED: Reserved = {
   owner: getAddress("0x1111111111111111111111111111111111111111"),
@@ -18,6 +20,119 @@ const form = (over: Partial<RecipientForm> = {}): RecipientForm => ({
   currency: "PHP",
   monthlyCap: "1000",
   ...over,
+});
+
+describe("reviewing and saving a recipient", () => {
+  // These stand in for the directory and the vault. A new form always reads the same underlying state.
+  function setup() {
+    const state = {
+      directory: [] as ListedRecipient[] | null,
+      vault: { allowed: false, monthlyCap: 0n, spentThisMonth: 0n } as ListedRecipient["onChain"],
+      signatures: 0,
+      nameWrites: 0,
+      saveFails: false,
+      reverted: false,
+    };
+    const reads = {
+      directory: async () => state.directory,
+      authorization: async () => state.vault,
+    };
+    const inspect = () => reviewRecipient(form(), RESERVED, reads);
+    const writes = {
+      authorize: async ({ address, monthlyCap }: NewRecipient) => {
+        state.signatures++;
+        if (address !== RAMON) throw new Error("Unexpected wallet address");
+        if (state.reverted) throw new Error("The transaction failed on-chain");
+        state.vault = { allowed: true, monthlyCap, spentThisMonth: 0n };
+      },
+      saveName: async ({ name, address, country, currency }: NewRecipient) => {
+        state.nameWrites++;
+        if (state.saveFails) throw new Error("Directory offline");
+        state.directory = [{ name, address, country, currency, onChain: state.vault }];
+      },
+    };
+    return { state, inspect, writes };
+  }
+
+  it("reviews the full recipient and cap without signing or writing", async () => {
+    const { state, inspect } = setup();
+    expect(await inspect()).toMatchObject({ action: "authorize", recipient: { address: RAMON, monthlyCap: 1000n * 10n ** 18n } });
+    expect([state.signatures, state.nameWrites]).toEqual([0, 0]);
+  });
+
+  it.each(["retry", "remount"])("only saves the name after partial success and %s", async (path) => {
+    const { state, inspect, writes } = setup();
+    state.saveFails = true;
+    const result = await saveReviewedRecipient(await inspect(), inspect, writes);
+    expect(result.kind).toBe("retry-name");
+    if (result.kind !== "retry-name") throw new Error("Expected a recoverable directory failure");
+    state.saveFails = false;
+    const review = path === "retry" ? result.review : await inspect();
+    expect(review.action).toBe("save-name");
+    expect((await saveReviewedRecipient(review, inspect, writes)).kind).toBe("added");
+    expect(state.signatures).toBe(1);
+    expect(state.directory).toEqual([{
+      name: "Ramon", address: RAMON, country: "PH", currency: "PHP",
+      onChain: { allowed: true, monthlyCap: 1000n * 10n ** 18n, spentThisMonth: 0n },
+    }]);
+  });
+
+  it("requires a fresh review if another tab changes the cap before a name-only retry", async () => {
+    const { state, inspect, writes } = setup();
+    state.vault = { allowed: true, monthlyCap: parseUnits("1000", 18), spentThisMonth: 0n };
+    const reviewed = await inspect();
+    state.vault.monthlyCap = parseUnits("200", 18);
+    const changed = await saveReviewedRecipient(reviewed, inspect, writes);
+    expect(changed).toMatchObject({ kind: "changed", review: { action: "authorize", currentCap: 200n * 10n ** 18n } });
+    expect([state.signatures, state.nameWrites]).toEqual([0, 0]);
+  });
+
+  it("never signs when the recipient directory or target vault entry is unreadable", async () => {
+    const { state, inspect, writes } = setup();
+    const reviewed = await inspect();
+    state.directory = null;
+    await expect(saveReviewedRecipient(reviewed, inspect, writes)).rejects.toThrow(/directory/i);
+    state.directory = [];
+    state.vault = null;
+    await expect(saveReviewedRecipient(reviewed, inspect, writes)).rejects.toThrow(/vault/i);
+    expect([state.signatures, state.nameWrites]).toEqual([0, 0]);
+  });
+
+  it("rejects a conflicting directory name even if the existing address is disabled", async () => {
+    const { state, inspect } = setup();
+    state.directory = [{ name: "Other name", address: RAMON, onChain: state.vault }];
+    await expect(inspect()).rejects.toThrow(/Other name/);
+  });
+
+  it("never saves a name if the wallet denies the request or the receipt reports failure", async () => {
+    const { state, inspect, writes } = setup();
+    state.reverted = true;
+    await expect(saveReviewedRecipient(await inspect(), inspect, writes)).rejects.toThrow(/transaction failed/);
+    expect(state.nameWrites).toBe(0);
+  });
+
+  it("keeps an intervening directory entry if the address was claimed during wallet confirmation", async () => {
+    const { state, inspect, writes } = setup();
+    const outcome = await saveReviewedRecipient(await inspect(), inspect, {
+      ...writes,
+      authorize: async (recipient) => {
+        await writes.authorize(recipient);
+        state.directory = [{ name: "Other name", address: RAMON, onChain: state.vault }];
+      },
+    });
+    expect(outcome).toMatchObject({ kind: "retry-name", error: expect.stringContaining("Other name") });
+    expect(state.nameWrites).toBe(0);
+    expect(state.directory?.[0]?.name).toBe("Other name");
+  });
+
+  it("recognizes a completed save after an uncertain response without another write", async () => {
+    const { state, inspect, writes } = setup();
+    const reviewed = await inspect();
+    state.vault = { allowed: true, monthlyCap: parseUnits("1000", 18), spentThisMonth: 0n };
+    state.directory = [{ name: "Ramon", address: RAMON, onChain: state.vault }];
+    expect((await saveReviewedRecipient(reviewed, inspect, writes)).kind).toBe("added");
+    expect([state.signatures, state.nameWrites]).toEqual([0, 0]);
+  });
 });
 
 const linh = (allowed: boolean): ListedRecipient => ({
