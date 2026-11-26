@@ -29,6 +29,9 @@ describe("parseQuote", () => {
     expect(parseQuote(answer("VND", 25809, "2026-11-26T02:00:00Z"), "VND", NOW)).toBeNull();
     expect(parseQuote({ ...answer("VND"), status: { error_code: 1008 } }, "VND", NOW)).toBeNull();
     expect(parseQuote("junk", "VND", NOW)).toBeNull();
+    const future = answer("VND");
+    future.data[1]!.quote[0]!.last_updated = "2027-11-26T03:38:03.000Z";
+    expect(parseQuote(future, "VND", NOW)).toBeNull();
   });
 });
 
@@ -44,6 +47,24 @@ describe("GET /api/fx/:currency", () => {
     t += 4 * 60 * 1000;
     await handle("VND");
     expect(c.calls).toHaveLength(1);
+  });
+
+  it("shares one CoinMarketCap call across a burst of visitors", async () => {
+    const c = cmc(answer("PHP"));
+    const handle = createFxHandler({ apiKey: "k", fetch: c.fetch, now: () => NOW });
+    const answers = await Promise.all(Array.from({ length: 50 }, () => handle("PHP")));
+    expect(answers.every((r) => r.status === 200)).toBe(true);
+    expect(c.calls).toHaveLength(1);
+  });
+
+  it("asks again once the quote passes its freshness limit, even within 5 minutes", async () => {
+    let t = Date.parse(STAMP) + 28 * 60 * 1000;
+    const c = cmc(answer("VND"));
+    const handle = createFxHandler({ apiKey: "k", fetch: c.fetch, now: () => t });
+    await handle("VND");
+    t += 3 * 60 * 1000;
+    await handle("VND");
+    expect(c.calls).toHaveLength(2);
   });
 
   it("refuses other currencies without calling, and says when the key is missing", async () => {

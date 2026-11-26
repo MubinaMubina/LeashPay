@@ -12,7 +12,7 @@ const COIN_IDS: Record<TokenSymbol, number> = { USDT: 825, USDC: 3408 };
 /** One call per currency (the plan allows one `convert` per call), both coins in it. */
 export const CMC_DEADLINE_MS = 10_000;
 /** A quote older than this is refused rather than shown as today's rate. */
-const MAX_QUOTE_AGE_MS = 30 * 60 * 1000;
+export const MAX_QUOTE_AGE_MS = 30 * 60 * 1000;
 
 export interface FxQuote {
   /** ISO 4217 code, such as "VND". */
@@ -83,10 +83,11 @@ export async function readQuote(
     const stamp = typeof quote.last_updated === "string" ? Date.parse(quote.last_updated) : Number.NaN;
     if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) throw new CmcError(`CoinMarketCap's ${token} price in ${currency} is invalid.`);
     if (!Number.isFinite(stamp)) throw new CmcError(`CoinMarketCap's ${token} quote has no readable time.`);
+    // Each coin on its own: a fresh one must not hide a stale or future-dated other.
+    const age = now().getTime() - stamp;
+    if (age > MAX_QUOTE_AGE_MS || age < -2 * 60 * 1000) throw new CmcError(`CoinMarketCap's ${currency} quote is out of date.`);
     rates[token] = price;
     oldest = Math.min(oldest, stamp);
   }
-  const age = now().getTime() - oldest;
-  if (age > MAX_QUOTE_AGE_MS || age < -2 * 60 * 1000) throw new CmcError(`CoinMarketCap's ${currency} quote is out of date.`);
   return { currency, rates, quotedAt: new Date(oldest).toISOString() };
 }

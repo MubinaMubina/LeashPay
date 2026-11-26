@@ -1,7 +1,7 @@
 import { formatUnits, type Address } from "viem";
 import type { Plan } from "../plan/build";
 import type { RecipientEntry } from "../plan/directory";
-import { CmcError, isLocalCurrency, readQuote, type FxQuote } from "./cmc";
+import { CmcError, MAX_QUOTE_AGE_MS, isLocalCurrency, readQuote, type FxQuote } from "./cmc";
 
 /** One quote serves every plan for this long (each call costs one CoinMarketCap credit). */
 const CACHE_MS = 5 * 60 * 1000;
@@ -39,7 +39,8 @@ export function createFx(options: { read?: (currency: string) => Promise<FxQuote
     }
     try {
       const fresh = await pending;
-      cached.set(currency, { until: now() + CACHE_MS, quote: fresh });
+      // Never kept past the quote's own freshness limit.
+      cached.set(currency, { until: Math.min(now() + CACHE_MS, Date.parse(fresh.quotedAt) + MAX_QUOTE_AGE_MS), quote: fresh });
       return fresh;
     } catch (err) {
       const error = err instanceof CmcError ? err.message : "CoinMarketCap couldn't be reached.";

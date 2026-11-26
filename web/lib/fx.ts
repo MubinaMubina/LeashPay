@@ -34,11 +34,11 @@ export function parseQuote(payload: unknown, currency: string, now: number): FxR
     const quote = (isRecord(asset) && Array.isArray(asset.quote) ? asset.quote : []).find((q) => isRecord(q) && q.symbol === currency);
     if (!isRecord(quote) || typeof quote.price !== "number" || !Number.isFinite(quote.price) || quote.price <= 0) return null;
     const stamp = typeof quote.last_updated === "string" ? Date.parse(quote.last_updated) : Number.NaN;
-    if (!Number.isFinite(stamp)) return null;
+    // Each coin on its own: a fresh one must not hide a stale or future-dated other.
+    if (!Number.isFinite(stamp) || now - stamp > MAX_QUOTE_AGE_MS || stamp - now > 2 * 60 * 1000) return null;
     rates[token] = quote.price;
     oldest = Math.min(oldest, stamp);
   }
-  if (now - oldest > MAX_QUOTE_AGE_MS || oldest - now > 2 * 60 * 1000) return null;
   return { currency, USDT: rates.USDT!, USDC: rates.USDC!, quotedAt: new Date(oldest).toISOString() };
 }
 
@@ -47,6 +47,25 @@ export function createFxHandler(deps: { apiKey?: string; fetch?: typeof fetch; n
   const now = deps.now ?? Date.now;
   const cache = new Map<string, { until: number; rates: FxRates }>();
   const failed = new Map<string, number>();
+  const inFlight = new Map<string, Promise<FxRates | null>>();
+
+  /** One CoinMarketCap call per currency at a time: a burst of visitors shares it. */
+  async function fresh(currency: string, apiKey: string): Promise<FxRates | null> {
+    try {
+      const response = await fetchFn(
+        `https://pro-api.coinmarketcap.com/v3/cryptocurrency/quotes/latest?id=${COIN_IDS.USDT},${COIN_IDS.USDC}&convert=${currency}`,
+        { headers: { Accept: "application/json", "X-CMC_PRO_API_KEY": apiKey }, redirect: "error", signal: AbortSignal.timeout(10_000) },
+      );
+      const rates = response.ok ? parseQuote(await response.json(), currency, now()) : null;
+      if (rates) cache.set(currency, { until: Math.min(now() + CACHE_MS, Date.parse(rates.quotedAt) + MAX_QUOTE_AGE_MS), rates });
+      else failed.set(currency, now() + FAILURE_MS);
+      return rates;
+    } catch {
+      failed.set(currency, now() + FAILURE_MS);
+      return null;
+    }
+  }
+
   return async (raw: string): Promise<Response> => {
     const currency = raw.toUpperCase();
     if (!(FX_CURRENCIES as readonly string[]).includes(currency)) return json(400, { error: `Rates are offered for ${FX_CURRENCIES.join(", ")} only.` });
@@ -54,19 +73,13 @@ export function createFxHandler(deps: { apiKey?: string; fetch?: typeof fetch; n
     const hit = cache.get(currency);
     if (hit && hit.until > now()) return json(200, hit.rates);
     if ((failed.get(currency) ?? 0) > now()) return json(502, { error: "CoinMarketCap isn't answering right now." });
-    try {
-      const response = await fetchFn(
-        `https://pro-api.coinmarketcap.com/v3/cryptocurrency/quotes/latest?id=${COIN_IDS.USDT},${COIN_IDS.USDC}&convert=${currency}`,
-        { headers: { Accept: "application/json", "X-CMC_PRO_API_KEY": deps.apiKey }, redirect: "error", signal: AbortSignal.timeout(10_000) },
-      );
-      const rates = response.ok ? parseQuote(await response.json(), currency, now()) : null;
-      if (!rates) throw new Error("unusable quote");
-      cache.set(currency, { until: now() + CACHE_MS, rates });
-      return json(200, rates);
-    } catch {
-      // Never echo the error: it could carry the request, and the request carries the key.
-      failed.set(currency, now() + FAILURE_MS);
-      return json(502, { error: "CoinMarketCap isn't answering right now." });
+    let pending = inFlight.get(currency);
+    if (!pending) {
+      pending = fresh(currency, deps.apiKey).finally(() => inFlight.delete(currency));
+      inFlight.set(currency, pending);
     }
+    const rates = await pending;
+    // Never echo the error: it could carry the request, and the request carries the key.
+    return rates ? json(200, rates) : json(502, { error: "CoinMarketCap isn't answering right now." });
   };
 }

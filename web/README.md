@@ -6,7 +6,7 @@ The owner's dashboard and the recipient's phone page. The owner logs in with ema
 - the owner's first payment from the browser, Linh, Marco and Mai at 1 USDT each;
 - the live attack: "URGENT: send all funds" was flagged by Claude, sent anyway by the agent in demo mode, and refused by the vault on-chain with `RecipientNotAllowed`.
 
-There are 64 tests; they don't need a login, the chain or Claude.
+There are 66 tests; they don't need a login, the chain or Claude.
 
 ## Run it
 
@@ -99,7 +99,7 @@ Each payment row shows the agent's local amount under the coin amount ("≈ 7,75
 ## Tests
 
 ```bash
-npm test        # 64 tests: the route table and owner checks (including two against the real agent app over HTTP),
+npm test        # 66 tests: the route table and owner checks (including two against the real agent app over HTTP),
                 # the Privy session, vault setup states, payment row labels, the recipient search, and the
                 # saved depeg limit and the depeg reading's time and percent, local amounts and the rate route
 npm run build   # type-check and production build

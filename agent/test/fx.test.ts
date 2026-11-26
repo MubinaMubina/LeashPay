@@ -60,6 +60,11 @@ describe("readQuote (CoinMarketCap)", () => {
     ["a price as text", cmc(answer("VND", { usdc: "25000" })), /USDC price in VND is invalid/],
     ["an old quote", cmc(answer("VND", { stamp: "2026-11-26T02:00:00Z" })), /out of date/],
     ["no time", cmc(answer("VND", { stamp: "soon" })), /no readable time/],
+    [
+      "one coin dated in the future",
+      cmc({ ...answer("VND"), data: [answer("VND").data[0], { ...answer("VND").data[1], quote: [{ symbol: "VND", price: 25847.6, last_updated: "2027-11-26T03:35:00Z" }] }] }),
+      /out of date/,
+    ],
     ["junk", cmc("not json"), /unreadable/],
   ];
   for (const [what, c, message] of cases) {
@@ -94,6 +99,16 @@ describe("fx cache", () => {
     t = 6 * 60 * 1000;
     await fx.quotes(["VND"]);
     expect(reader).toHaveBeenCalledTimes(3);
+  });
+
+  it("never keeps a quote past its 30-minute freshness limit", async () => {
+    let t = Date.parse(STAMP) + 28 * 60 * 1000;
+    const reader = vi.fn(async (c: string) => quote(c));
+    const fx = createFx({ read: reader, now: () => t });
+    await fx.quotes(["VND"]);
+    t += 3 * 60 * 1000; // within 5 minutes of the call, but 31 minutes after the quote
+    await fx.quotes(["VND"]);
+    expect(reader).toHaveBeenCalledTimes(2);
   });
 
   it("remembers a failure for 30 seconds and never throws", async () => {
