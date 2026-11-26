@@ -1,47 +1,37 @@
 "use client";
 
 import { Skeleton } from "./Skeleton";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { encodeFunctionData, getAddress, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, publicClient, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
 import { formatAmount } from "@/lib/plan-progress";
 import { CURRENCIES, checkNewRecipient, type ListedRecipient, type NewRecipient, type RecipientForm } from "@/lib/recipients";
 
-interface DirectoryEntry {
-  name: string;
-  address: string;
-  country?: string;
-  currency?: string;
-}
+type DirectoryEntry = Omit<ListedRecipient, "onChain">;
+const PAGE_SIZE = 10;
+// Matches MAX_RECIPIENTS in agent/src/plan/directory.ts.
+const DIRECTORY_LIMIT = 200;
 
 type Phase =
   | { kind: "closed" }
   | { kind: "open"; error?: string }
+  | { kind: "checking" }
   | { kind: "vault"; name: string }
   | { kind: "directory"; name: string }
   | { kind: "added"; name: string };
 
 const EMPTY: RecipientForm = { name: "", address: "", country: "", currency: "VND", monthlyCap: "1000" };
 
-/** The agent's address book for this owner, each entry with the vault's own view of it. */
-async function readRecipients(vault: Address, directory: DirectoryEntry[]): Promise<ListedRecipient[]> {
-  return Promise.all(
-    directory.map(async (entry) => {
-      const address = getAddress(entry.address);
-      try {
-        const [allowed, monthlyCap, spentThisMonth] = await publicClient.readContract({
-          address: vault,
-          abi: leashVaultAbi,
-          functionName: "recipientInfo",
-          args: [address],
-        });
-        return { ...entry, address, onChain: { allowed, monthlyCap, spentThisMonth } };
-      } catch {
-        return { ...entry, address, onChain: null };
-      }
-    }),
-  );
+async function readRecipient(vault: Address, address: Address): Promise<ListedRecipient["onChain"]> {
+  try {
+    const [allowed, monthlyCap, spentThisMonth] = await publicClient.readContract({
+      address: vault, abi: leashVaultAbi, functionName: "recipientInfo", args: [address],
+    });
+    return { allowed, monthlyCap, spentThisMonth };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -54,37 +44,70 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
   const api = useApi();
   const sendAndWait = useSendAndWait();
   const owner = useOwnerWallet();
-  const [list, setList] = useState<ListedRecipient[] | null>(null);
+  const [list, setList] = useState<DirectoryEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<RecipientForm>(EMPTY);
   const [phase, setPhase] = useState<Phase>({ kind: "closed" });
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [checks, setChecks] = useState(new Map<Address, ListedRecipient["onChain"]>());
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const addLock = useRef(false);
+  const showForm = phase.kind !== "closed" && phase.kind !== "added";
 
-  const load = useCallback(async (): Promise<ListedRecipient[] | null> => {
+  const load = useCallback(async () => {
     const directory = await api<DirectoryEntry[]>("directory");
     if (!directory.ok) {
-      setLoadError(directory.body.error ?? `The agent answered ${directory.status}.`);
+      setLoadError(directory.body.error ?? "Couldn’t load recipients.");
       return null;
     }
-    const next = await readRecipients(vault, directory.body);
-    setList(next);
+    setList(directory.body);
     setLoadError(null);
-    return next;
-  }, [api, vault]);
+    return directory.body;
+  }, [api]);
+
+  useEffect(() => { void load(); }, [load]);
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return (list ?? []).filter((entry) => entry.name.toLowerCase().includes(needle));
+  }, [list, query]);
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(matches.length / PAGE_SIZE) - 1));
+  const start = currentPage * PAGE_SIZE;
+  const visible = useMemo(() => matches.slice(start, start + PAGE_SIZE), [matches, start]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    scrollArea.current?.scrollTo({ top: 0 });
+    if (showForm || !visible.length) return;
+    let cancelled = false;
+    setChecks(new Map());
+    // Coalesce keystrokes before contacting the vault. Names render immediately.
+    const timer = window.setTimeout(async () => {
+      const entries = await Promise.all(visible.map(async ({ address }) =>
+        [address, await readRecipient(vault, address)] as const));
+      if (!cancelled) setChecks(new Map(entries));
+    }, 150);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [visible, vault, showForm]);
 
-  const add = useCallback(async () => {
-    if (!owner) return setPhase({ kind: "open", error: "Your wallet isn't ready yet." });
-    // Without the agent's address the "agent can't pay itself" check can't run.
-    if (agent === undefined) return setPhase({ kind: "open", error: "Still reading your vault. Try again in a moment." });
-    // Checked against a fresh list, so a name or address added in another tab still counts.
-    const current = (await load()) ?? list ?? [];
-    const checked = checkNewRecipient(form, current, { owner: getAddress(owner.address), vault, agent });
-    if (!checked.ok) return setPhase({ kind: "open", error: checked.error });
-    const recipient: NewRecipient = checked.recipient;
+  const add = async () => {
+    if (addLock.current) return;
+    if (!owner || agent === undefined) return setPhase({ kind: "open", error: "Your vault is still loading. Try again in a moment." });
+    addLock.current = true;
+    setPhase({ kind: "checking" });
     try {
+      const current = await load();
+      if (!current) throw new Error("Couldn’t verify the directory. Try again.");
+      // Duplicate names must be checked across every page. Only a matching address needs a fresh chain read.
+      const duplicate = current.find((r) => r.address.toLowerCase() === form.address.trim().toLowerCase());
+      const onChain = duplicate ? await readRecipient(vault, duplicate.address) : null;
+      if (duplicate && !onChain) throw new Error("Couldn’t verify this wallet’s current limit. Try again.");
+      const existing = current.map((r) => ({ ...r, onChain: r === duplicate ? onChain : null }));
+      const checked = checkNewRecipient(form, existing, { owner: getAddress(owner.address), vault, agent });
+      if (!checked.ok) throw new Error(checked.error);
+      if (!duplicate && current.length >= DIRECTORY_LIMIT) {
+        throw new Error(`Your directory has reached its ${DIRECTORY_LIMIT}-recipient limit.`);
+      }
+      const recipient: NewRecipient = checked.recipient;
       setPhase({ kind: "vault", name: recipient.name });
       await sendAndWait(
         vault,
@@ -100,14 +123,17 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
       }
       await load();
       setForm(EMPTY);
+      setQuery(name);
+      setPage(0);
       setPhase({ kind: "added", name });
     } catch (err) {
-      await load();
       setPhase({ kind: "open", error: errorText(err) });
+    } finally {
+      addLock.current = false;
     }
-  }, [owner, load, list, form, vault, agent, sendAndWait, api]);
+  };
 
-  const busy = phase.kind === "vault" || phase.kind === "directory";
+  const busy = phase.kind === "checking" || phase.kind === "vault" || phase.kind === "directory";
   const field = (key: keyof RecipientForm) => ({
     value: form[key],
     disabled: busy,
@@ -116,36 +142,47 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
 
   return (
     <>
-      {loadError && <div className="sub">{loadError}</div>}
-      {list === null && !loadError && <Skeleton label="Loading recipients" />}
-      {list?.length === 0 && <div className="sub">No recipients yet.</div>}
-      {list?.map((r) => (
-        <div className="person" key={r.address}>
-          <span>
-            {r.name} {r.country && <small>· {r.country}</small>}
-          </span>
-          {r.onChain === null ? (
-            <small>vault unreadable</small>
-          ) : r.onChain.allowed ? (
-            <small>{formatAmount(r.onChain.monthlyCap.toString(), "").trim()} / 30 days</small>
-          ) : (
-            <small className="not-allowed" title="Add this address again to finish: the vault would refuse a payment now.">
-              not in vault
-            </small>
-          )}
-        </div>
-      ))}
-
-      {phase.kind === "added" && (
-        <div className="added">
-          {phase.name} can be paid now. Try “Pay {phase.name} 1”.
-        </div>
-      )}
-
-      {phase.kind === "closed" || phase.kind === "added" ? (
-        <button className="link add-link" onClick={() => setPhase({ kind: "open" })}>
-          + Add recipient
-        </button>
+      <header className="directory-head">
+        <h1>{showForm ? "Add recipient" : "Recipients"}</h1>
+        {!showForm && <button className="btn" onClick={() => setPhase({ kind: "open" })}>Add recipient</button>}
+      </header>
+      {!showForm ? (
+        <>
+          <div className="directory-search">
+            <input aria-label="Search recipients by name" type="search" placeholder="Search by name…" value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(0); }} />
+          </div>
+          {loadError && <p role="alert" className="error-card">{loadError} <button className="link" onClick={load}>Retry</button></p>}
+          {phase.kind === "added" && <p role="status" className="added">{phase.name} added to your recipients.</p>}
+          {visible.length > 0 && <div className="directory-columns"><span>Name</span><span>Monthly cap</span></div>}
+          <div className="directory-list" ref={scrollArea}>
+            {list === null && !loadError && <Skeleton label="Loading recipients" />}
+            {list !== null && !matches.length && <p className="hint">{list.length ? "No matching recipients." : "No recipients yet."}</p>}
+            <ul aria-label="Recipient directory">
+              {visible.map((r) => {
+                const check = checks.get(r.address);
+                return (
+                  <li key={r.address} className="person">
+                    <div className="person-identity"><strong>{r.name}</strong>
+                      <small>{[r.country, r.currency].filter(Boolean).join(" · ")}</small>
+                    </div>
+                    <div className="person-cap">{check === undefined ? "Checking limit…" :
+                      check === null ? "Limit unavailable" : check.allowed ?
+                      <>{formatAmount(check.monthlyCap.toString(), "").trim()} <small>/ 30 days</small></> :
+                      <span className="not-allowed">Not in vault</span>}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          {list !== null && <footer className="directory-footer">
+            <span role="status">{matches.length ? `${start + 1}–${start + visible.length} of ${matches.length}` : "0 results"}</span>
+            {matches.length > PAGE_SIZE && <div>
+              <button className="chip" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button>
+              <button className="chip" disabled={start + PAGE_SIZE >= matches.length} onClick={() => setPage(currentPage + 1)}>Next</button>
+            </div>}
+          </footer>}
+        </>
       ) : (
         <form
           className="add-form"
@@ -186,7 +223,7 @@ export function Recipients({ vault, agent }: { vault: Address; agent: Address | 
           {phase.kind === "open" && phase.error && <p className="kill-error">{phase.error}</p>}
           <div className="add-actions">
             <button className="btn" type="submit" disabled={busy}>
-              {phase.kind === "vault"
+              {phase.kind === "checking" ? "Checking…" : phase.kind === "vault"
                 ? "Confirm in your wallet…"
                 : phase.kind === "directory"
                   ? "Saving the name…"

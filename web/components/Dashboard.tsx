@@ -60,6 +60,9 @@ function useDepegThreshold(vault: Address): [number, (value: number) => void] {
 /** How long the vault column shows a reaction (balance changed, or "unchanged" after an attack). */
 const REACTION_MS = 4_000;
 
+const WORKSPACE_TABS = ["Payment chat", "Recipients"] as const;
+type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
+
 const PHONE_QUERY = "(max-width: 799px)";
 function subscribeToWidth(notify: () => void) {
   const query = window.matchMedia(PHONE_QUERY);
@@ -70,6 +73,15 @@ const readMobile = () => window.matchMedia(PHONE_QUERY).matches;
 const serverMobile = () => false;
 
 export function Dashboard({ vault }: { vault: Address }) {
+  const [tab, setTab] = useState<WorkspaceTab>("Payment chat");
+  const [directoryOpened, setDirectoryOpened] = useState(false);
+  const tabs = useRef<HTMLDivElement>(null);
+  const selectTab = (next: WorkspaceTab, focus = false) => {
+    if (next === "Recipients") setDirectoryOpened(true);
+    sheet.current?.close();
+    setTab(next);
+    if (focus) tabs.current?.querySelectorAll<HTMLButtonElement>("button")[WORKSPACE_TABS.indexOf(next)]?.focus();
+  };
   const mobile = useSyncExternalStore(subscribeToWidth, readMobile, serverMobile);
   const dashboard = useRef<HTMLElement>(null);
   const sheet = useRef<HTMLDialogElement>(null);
@@ -210,10 +222,7 @@ export function Dashboard({ vault }: { vault: Address }) {
           <div className="sub">Cournot's USDC depeg risk is checked before each plan. Applies to the next plan you send.</div>
 
         </details>
-        <details className="vault-details">
-          <summary>Recipients</summary>
-          <Recipients vault={vault} agent={info ? (info.agent ? getAddress(info.agent) : null) : undefined} />
-        </details>
+        <button className="directory-shortcut" onClick={() => selectTab("Recipients", true)}>Recipients <span aria-hidden="true">↗</span></button>
       </div>
       <div className="kill-area">
         <button className={`kill ${paused ? "on" : ""}`} onClick={toggle} disabled={!info || Boolean(vaultError) || killSwitch.kind === "sending"}>
@@ -230,10 +239,28 @@ export function Dashboard({ vault }: { vault: Address }) {
         <span className="status"><i className={dotClass} />Vault {statusText.toLowerCase()}</span><span>View vault ›</span>
       </button>}
       <div className="main-col">
-        <h1>Payment chat</h1>
+        <div className="workspace-tabs" ref={tabs} role="tablist" aria-label="Workspace">
+          {WORKSPACE_TABS.map((name, index) => (
+            <button key={name} id={`tab-${index}`} role="tab" aria-selected={tab === name}
+              aria-controls={`panel-${index}`} tabIndex={tab === name ? 0 : -1}
+              onClick={() => selectTab(name)}
+              onKeyDown={(event) => {
+                const { key } = event;
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) return;
+                event.preventDefault();
+                const next = key === "Home" ? 0 : key === "End" ? 1 : 1 - index;
+                selectTab(WORKSPACE_TABS[next], true);
+              }}>{name}</button>
+          ))}
+        </div>
         {agentDown && <div className="banner">The agent isn't running on this laptop. Start it with npm start in agent/.</div>}
         {paused && <div className="banner">Vault paused. The agent can't pay anyone until you unpause. You can still withdraw.</div>}
-        <Chat onSettled={onSettled} onAgentDown={() => setAgentDown(true)} depegThreshold={depegThreshold} />
+        <section className="workspace-panel chat-panel" id="panel-0" role="tabpanel" aria-labelledby="tab-0" hidden={tab !== "Payment chat"}>
+          <Chat onSettled={onSettled} onAgentDown={() => setAgentDown(true)} depegThreshold={depegThreshold} />
+        </section>
+        <section className="workspace-panel directory-panel" id="panel-1" role="tabpanel" aria-labelledby="tab-1" hidden={tab !== "Recipients"}>
+          {directoryOpened && <Recipients vault={vault} agent={info ? (info.agent ? getAddress(info.agent) : null) : undefined} />}
+        </section>
       </div>
       {mobile ? (
         <dialog ref={sheet} className="vault-sheet" aria-label="Your vault"

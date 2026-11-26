@@ -14,7 +14,7 @@ export function MemoryBox({ memory }: { memory: PlanMemoryJson }) {
         <ul className="sources">
           {memory.notes.map((note, i) => (
             <li key={i}>
-              <strong>{note.title}</strong>: {note.text.length > 220 ? `${note.text.slice(0, 220)}…` : note.text}
+              <strong>{note.title}</strong>: {note.text}
             </li>
           ))}
         </ul>

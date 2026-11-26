@@ -1,7 +1,7 @@
 "use client";
 
 import { useSignMessage } from "@privy-io/react-auth";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
 import { DEMO_ATTACK_ADDRESS } from "@/lib/demo";
 import { DepegBox } from "./DepegBox";
@@ -20,6 +20,11 @@ import {
   type PaymentResultJson,
   type PlanJson,
 } from "@/lib/plan-progress";
+
+/** Keep the chat excerpt short; the detail sheet retains the original text. */
+function excerpt(text: string) {
+  return text.length > 110 ? text.slice(0, 107).trimEnd() + "…" : text;
+}
 
 type Attack =
   | { stage: "idle" }
@@ -52,6 +57,7 @@ export function PlanCard({
   onSettled: (outcome?: { attackRefused?: boolean }) => void;
   onAgentDown: () => void;
 }) {
+  const checksDialog = useRef<HTMLDialogElement>(null);
   const api = useApi();
   const owner = useOwnerWallet();
   const { signMessage } = useSignMessage();
@@ -130,7 +136,13 @@ export function PlanCard({
   const isAttackPlan =
     payableRows.length === 1 && payableRows[0].recipient?.toLowerCase() === DEMO_ATTACK_ADDRESS.toLowerCase();
 
-  const rows = plan.payments.map((payment, i) => ({ payment, status: rowStatus(payment, i, events, now, results) }));
+  const rows = plan.payments.map((payment, i) => {
+    const status = rowStatus(payment, i, events, now, results);
+    // Unpayable rows already use the joined warnings as their status detail.
+    const detail = status.detail === payment.warnings.join(" ") ? undefined : status.detail;
+    const messages = [...new Set([detail, ...payment.warnings].filter((text): text is string => Boolean(text)))];
+    return { payment, status, messages };
+  });
   // A row can still be paid if it's payable, not yet paid and not refused (an unchecked row is
   // checked again by the vault when the plan runs).
   const payable = rows.some(({ payment, status }) => isExecutable(payment) && status.label !== "Paid ✓" && status.tone !== "stop");
@@ -155,7 +167,7 @@ export function PlanCard({
         {plan.payments.length} payment{plan.payments.length === 1 ? "" : "s"} · {plan.scheduledFor === "now" ? "Pay now" : `Scheduled for ${plan.scheduledFor}`}
       </p>}
 
-      {rows.map(({ payment, status }, i) => (
+      {rows.map(({ payment, status, messages }, i) => (
         <div className="row" key={i}>
           <span className="who" title={payment.recipientName}>
             {/^0x[0-9a-fA-F]{40}$/.test(payment.recipientName) ? "Unknown address" : payment.recipientName}
@@ -179,37 +191,44 @@ export function PlanCard({
               status.label === "Vault check passes" ? "✓ Within limits" : status.label
             )}
           </span>
-          {(status.detail || payment.warnings.length > 0) && (
-            <div className="why">{[...payment.warnings, status.detail].filter(Boolean).join(" ")}</div>
-          )}
+          {messages.length > 0 && <div className="why">
+            {excerpt(messages[0])}{messages.length > 1 && ` · +${messages.length - 1} more`}
+          </div>}
         </div>
       ))}
 
       {plan.depeg && (!plan.depeg.available || plan.depeg.chosenToken === "USDT") && (
-        <p className="notice">{plan.depeg.note || (plan.depeg.available ? "USDT selected by the depeg guard." : plan.depeg.reason)}</p>
+        <p className="notice">{plan.depeg.available ? "Depeg guard selected USDT." : "Depeg check unavailable."}</p>
       )}
-      {plan.memory?.writeError && <p className="memory-warn">Saving new memories is unavailable.</p>}
-      <details className="plan-checks">
-        <summary>View checks</summary>
-        <div className="meta">Plan reference {shortAddress(plan.ref)}</div>
-        {quotedAt && <div className="meta fx-source">Local amounts: CoinMarketCap rate from {readingTime(quotedAt)}, for information; the vault pays the coin amount.</div>}
-
-        {plan.depeg && <DepegBox depeg={plan.depeg} />}
-
-        {plan.memory && <MemoryBox memory={plan.memory} />}
-      </details>
-
-      {notes.length > 0 && (
-        <ul className="notes">
-          {notes.map((note, i) => (
-            <li key={i}>{note}</li>
-          ))}
-        </ul>
-      )}
+      {plan.memory?.writeError && <p className="memory-warn">Memory save unavailable.</p>}
+      {notes.length > 0 && <p className="plan-note">{excerpt(notes[0])}{notes.length > 1 && ` · +${notes.length - 1} notes`}</p>}
+      <button type="button" className="checks-trigger" aria-haspopup="dialog" onClick={() => checksDialog.current?.showModal()}>
+        Checks &amp; notes <span aria-hidden="true">↗</span>
+      </button>
+      <dialog className="checks-dialog" ref={checksDialog} aria-label="Checks and notes"
+        onClick={(event) => { if (event.target === checksDialog.current) checksDialog.current?.close(); }}>
+        <div className="checks-sheet">
+          <header><h2>Checks &amp; notes</h2><button type="button" className="chip" onClick={() => checksDialog.current?.close()}>Close</button></header>
+          <div className="checks-content">
+            <p className="meta">Plan {shortAddress(plan.ref)}</p>
+            {rows.length > 0 && <section><h3>Vault checks</h3>
+              {rows.map(({ payment, status, messages }, index) => <div className="check-result" key={index}>
+                <strong>{payment.recipientName}</strong>
+                <span className={`badge ${status.tone}`}>{status.label}</span>
+                {messages.length > 0 && <ul>{messages.map((message) => <li key={message}>{message}</li>)}</ul>}
+              </div>)}
+            </section>}
+            {notes.length > 0 && <section><h3>Plan notes</h3><ul>{notes.map((note, i) => <li key={i}>{note}</li>)}</ul></section>}
+            {quotedAt && <p className="meta fx-source">Local estimates · CoinMarketCap, {readingTime(quotedAt)}. Settled in stablecoins.</p>}
+            {plan.depeg && <details><summary>Stablecoin risk</summary><DepegBox depeg={plan.depeg} /></details>}
+            {plan.memory && <details><summary>Recalled notes</summary><MemoryBox memory={plan.memory} /></details>}
+          </div>
+        </div>
+      </dialog>
 
       {run.kind === "busy" && (
         <div className="notice">
-          The agent is finishing another plan.{" "}
+          Another plan is running.{" "}
           <button className="btn small-btn" onClick={approve}>
             Retry
           </button>
@@ -219,13 +238,13 @@ export function PlanCard({
 
       {isAttackPlan && plan.vault && (
         <div className="attack-flow">
-          <p className="flagged">Claude flagged this: the address isn't one of your recipients, so you shouldn't approve it.</p>
+          <p className="flagged">Unlisted recipient. Do not approve this payment.</p>
           {attack.stage === "idle" && (
             <div className="actions">
               <button className="btn danger" onClick={tryAnyway}>
                 Try anyway (demo)
               </button>
-              <span className="hint">Plays a hacked agent that pays without your signature. The vault decides.</span>
+              <span className="hint">Tests the vault’s refusal without your signature.</span>
             </div>
           )}
           {attack.stage === "sending" && <p className="busy">Demo: the agent is submitting it anyway…</p>}
@@ -252,7 +271,7 @@ export function PlanCard({
             )
           )}
           <span className="hint">
-            {run.kind === "running" ? "Each payment is checked by the vault as it goes." : "Your signature is valid for 10 minutes."}
+            {run.kind === "running" ? "Checking each payment…" : "Approval expires in 10 min."}
           </span>
         </div>
       )}
