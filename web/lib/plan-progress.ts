@@ -43,7 +43,7 @@ export type PlanDepegJson = DepegJson & { note?: string };
 
 /** What the agent's memory (Living Brain) recalled before planning. */
 export type PlanMemoryJson =
-  | { available: true; notes: { title: string; text: string }[]; writeError?: string }
+  | { available: true; notes: { title: string; text: string }[]; links?: string[]; writeError?: string }
   | { available: false; reason: string; writeError?: string };
 
 export interface PlanJson {

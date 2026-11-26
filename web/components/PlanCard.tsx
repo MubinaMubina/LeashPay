@@ -200,6 +200,14 @@ export function PlanCard({
       {plan.depeg && (!plan.depeg.available || plan.depeg.chosenToken === "USDT") && (
         <p className="notice">{plan.depeg.available ? "Depeg guard selected USDT." : "Depeg check unavailable."}</p>
       )}
+      {plan.memory?.available && (plan.memory.links?.length || plan.memory.notes.length > 0) && (
+        <p className="plan-note memory-line">
+          <strong>Living Brain</strong>{" · "}
+          {plan.memory.links?.length
+            ? <>{excerpt(plan.memory.links[0]!.replace(/^Living Brain:\s*/, ""))}{plan.memory.links.length > 1 && ` · +${plan.memory.links.length - 1} more`}</>
+            : `Recalled ${plan.memory.notes.length} ${plan.memory.notes.length === 1 ? "note" : "notes"} before planning`}
+        </p>
+      )}
       {plan.memory?.writeError && <p className="memory-warn">Memory save unavailable.</p>}
       {notes.length > 0 && <p className="plan-note">{excerpt(notes[0])}{notes.length > 1 && ` · +${notes.length - 1} notes`}</p>}
       <button type="button" className="checks-trigger" aria-haspopup="dialog" onClick={() => checksDialog.current?.showModal()}>
@@ -221,7 +229,8 @@ export function PlanCard({
             {notes.length > 0 && <section><h3>Plan notes</h3><ul>{notes.map((note, i) => <li key={i}>{note}</li>)}</ul></section>}
             {quotedAt && <p className="meta fx-source">Local estimates · CoinMarketCap, {readingTime(quotedAt)}. Settled in stablecoins.</p>}
             {plan.depeg && <details><summary>Stablecoin risk</summary><DepegBox depeg={plan.depeg} /></details>}
-            {plan.memory && <details><summary>Recalled notes</summary><MemoryBox memory={plan.memory} /></details>}
+            {plan.memory && <details open={Boolean(plan.memory.available && (plan.memory.links?.length || plan.memory.notes.length))}>
+              <summary>Agent memory</summary><MemoryBox memory={plan.memory} /></details>}
           </div>
         </div>
       </dialog>

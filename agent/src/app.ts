@@ -341,6 +341,16 @@ export function createApp(deps: AppDeps) {
     }
     if (fxQuotes) attachLocalAmounts(plan, directory, await fxQuotes);
     if (recalled) plan.memory = recalled;
+    // Memory connects this plan to earlier events (an attack on a payee, the last payout). Code makes
+    // the link, not Claude, and it lands in the notes the owner signs. It never blocks a payment.
+    if (deps.memory && recalled?.available && plan.kind === "payment") {
+      const payees = plan.payments.flatMap((p) => (p.recipient ? [{ name: p.recipientName, address: p.recipient }] : []));
+      const links = await deps.memory.connect(body.owner, payees);
+      if (links.length > 0) {
+        plan.memory = { ...recalled, links };
+        plan.notes.push(...links);
+      }
+    }
     if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });

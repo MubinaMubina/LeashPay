@@ -42,11 +42,16 @@ export interface MemoryNote {
 }
 
 export type Recall =
-  | { available: true; notes: MemoryNote[]; writeError?: string }
+  | { available: true; notes: MemoryNote[]; links?: string[]; writeError?: string }
   | { available: false; reason: string; writeError?: string };
 
 export interface Memory {
   recall(owner: Address, query: string): Promise<Recall>;
+  /**
+   * What memory knows about the people this plan pays: an earlier attack on the address, the
+   * last payout to it. Reads the notes recall already loaded; an outage gives no links, never an error.
+   */
+  connect(owner: Address, payees: readonly Payee[]): Promise<string[]>;
   /** Saves in the background, one note at a time; the outcome shows on the next plan. */
   remember(note: BrainNote): Promise<void>;
 }
@@ -64,6 +69,51 @@ export function rankOwnNotes(owner: Address, sources: BrainSource[], hitPageIds:
     .sort((a, b) => rank(a.s) - rank(b.s) || (b.s.createdAt ?? 0) - (a.s.createdAt ?? 0) || a.order - b.order)
     .slice(0, MAX_NOTES)
     .map(({ s }) => ({ title: oneLine(s.label ?? s.originRef, 120), text: s.content.slice(0, MAX_NOTE_CHARS) }));
+}
+
+export interface Payee {
+  name: string;
+  address: Address;
+}
+
+const ADDRESS = /0x[0-9a-fA-F]{40}/;
+const kindOf = (s: BrainSource, prefix: string) => s.originRef.slice(prefix.length).split(":")[0];
+/** The date the agent wrote into the note ("… on 2026-11-26 UTC"), else when Living Brain stored it. */
+const dateOf = (s: BrainSource) =>
+  /\b(\d{4}-\d{2}-\d{2})\b/.exec(s.content)?.[1] ?? (s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : "an earlier date");
+const newestFirst = (a: BrainSource, b: BrainSource) => (b.createdAt ?? 0) - (a.createdAt ?? 0);
+
+/**
+ * Connects this plan's payees to what the agent saved earlier, from its own notes only (the
+ * `leashpay:<owner>:` prefix). Attack attempts come first: they are the link the owner must not miss.
+ * Payouts are matched on "(address)", the form notesForRun writes, so an owner's or vault's own
+ * address in the same sentence never counts as the payee.
+ */
+export function linkPayees(owner: Address, sources: readonly BrainSource[], payees: readonly Payee[]): string[] {
+  const prefix = ownerPrefix(owner);
+  const mine = sources.filter((s) => s.originRef.toLowerCase().startsWith(prefix) && s.status !== "failed");
+  const seen = new Set<string>();
+  const attacks: string[] = [];
+  const payouts: string[] = [];
+  for (const payee of payees) {
+    const address = payee.address.toLowerCase();
+    if (seen.has(address) || address === owner.toLowerCase()) continue;
+    seen.add(address);
+    const about = (kind: string, needle: string) =>
+      mine.filter((s) => kindOf(s, prefix) === kind && s.content.toLowerCase().includes(needle)).sort(newestFirst);
+    const attack = about("attack", `to ${address}`)[0];
+    if (attack) {
+      attacks.push(`Living Brain: ${payee.address} was the target of an attack attempt on ${dateOf(attack)}, and the vault refused it. Treat this payment as suspicious.`);
+    }
+    const paid = about("paid", `(${address})`);
+    if (paid.length > 0) {
+      const last = paid[0]!;
+      const amount = new RegExp(`\\(${ADDRESS.source}\\) ([0-9.]+ (?:USDT|USDC))`).exec(last.content)?.[1];
+      const times = paid.length > 1 ? ` (${paid.length} payouts remembered)` : "";
+      payouts.push(`Living Brain: you last paid ${oneLine(payee.name, 60)}${amount ? ` ${amount}` : ""} on ${dateOf(last)}${times}.`);
+    }
+  }
+  return [...attacks, ...payouts];
 }
 
 export function createMemory(options: { client: BrainClient; now?: () => number; log?: (line: string) => void }): Memory {
@@ -100,6 +150,14 @@ export function createMemory(options: { client: BrainClient; now?: () => number;
         const reason = reasonOf(err, "Living Brain couldn't be reached.");
         failed = { until: now() + FAILURE_MS, reason };
         return withWrite({ available: false as const, reason });
+      }
+    },
+    async connect(owner, payees) {
+      if (payees.length === 0 || (failed && failed.until > now())) return [];
+      try {
+        return linkPayees(owner, await allSources(), payees);
+      } catch {
+        return []; // recall already reports the outage on the plan
       }
     },
     remember(note) {
