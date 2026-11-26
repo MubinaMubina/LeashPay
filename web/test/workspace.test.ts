@@ -31,7 +31,7 @@ describe("public workspace", () => {
     }
     if (state === "owner") wallet.current = { address: "0x1111111111111111111111111111111111111111" };
     const html = renderToStaticMarkup(createElement(Home));
-    for (const name of ["Payment chat", "Recipients", "Your vault"]) expect(html).toMatch(new RegExp('role="tab"[^>]+>' + name + '<'));
+    for (const name of ["Payment chat", "Recipients", "Your vault", "History"]) expect(html).toMatch(new RegExp('role="tab"[^>]+>' + name + '<'));
     expect(html).toContain('aria-label="Message the agent"');
     expect(api).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();

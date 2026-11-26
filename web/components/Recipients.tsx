@@ -6,6 +6,7 @@ import { encodeFunctionData, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
 import { formatAmount } from "@/lib/plan-progress";
+import { RecipientDetails } from "./RecipientDetails";
 import { AddRecipientForm } from "./RecipientForm";
 import { readRecipientAuthorization, withVaultLock, type RecipientBook } from "@/lib/recipient-book";
 import type { DirectoryEntry, ListedRecipient } from "@/lib/recipients";
@@ -27,6 +28,7 @@ export function Recipients({ vault, agent, book, listRequest, accessNotice }: { 
   const [adding, setAdding] = useState(false);
   const previousRequest = useRef(listRequest);
   const [phase, setPhase] = useState<Phase>({ kind: "closed" });
+  const [contact, setContact] = useState<DirectoryEntry | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [checks, setChecks] = useState(new Map<Address, ListedRecipient["onChain"]>());
@@ -134,6 +136,7 @@ export function Recipients({ vault, agent, book, listRequest, accessNotice }: { 
 
   return (
     <>
+      {contact && <RecipientDetails contact={contact} authorization={checks.get(contact.address)} onClose={() => setContact(null)} />}
       <header className="directory-head">
         {!showList && <button type="button" autoFocus={phase.kind === "remove"} className="back-to-recipients" disabled={busy}
           aria-label="Back to recipients" title="Back to recipients" onClick={backToList}>←</button>}
@@ -164,13 +167,16 @@ export function Recipients({ vault, agent, book, listRequest, accessNotice }: { 
                 const check = checks.get(r.address);
                 return (
                   <li key={r.address} className="person">
-                    <div className="person-identity"><strong>{r.name}</strong>
+                    <button type="button" className="person-details" aria-haspopup="dialog" aria-label={`View details for ${r.name}`}
+                      onClick={() => setContact(r)}>
+                    <span className="person-identity"><strong>{r.name}</strong>
                       <small>{[r.country, r.currency].filter(Boolean).join(" · ")}</small>
-                    </div>
-                    <div className="person-cap">{check === undefined ? <span className="cap-loading"><span className="sr-only">Checking limit…</span></span> :
+                    </span>
+                    <span className="person-cap">{check === undefined ? <span className="cap-loading"><span className="sr-only">Checking limit…</span></span> :
                       check === null ? "Limit unavailable" : check.allowed ?
                       <>{formatAmount(check.monthlyCap.toString(), "").trim()} <small>/ 30 days</small></> :
-                      <span className="not-allowed">Not in vault</span>}</div>
+                      <span className="not-allowed">Not in vault</span>}</span>
+                    </button>
                     <button type="button" className="remove-recipient" id={`delete-${r.address}`}
                       aria-label={`Delete ${r.name}`} title={`Delete ${r.name}`} onClick={() => {
                         returnFocus.current = `delete-${r.address}`;

@@ -142,6 +142,13 @@ export function formatAmount(amount: string | null, token: string): string {
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${token}`;
 }
 
+/** Keep every token decimal from the receipt, including payments smaller than a cent. */
+export function formatTokenAmount(raw: string) {
+  const [whole, fraction] = formatUnits(BigInt(raw), 18).split(".");
+  const grouped = BigInt(whole).toLocaleString("en-US");
+  return fraction ? `${grouped}.${fraction}` : grouped;
+}
+
 /** The currency's own decimals: none for VND, two for PHP and THB. */
 function currencyDigits(currency: string): number {
   try {

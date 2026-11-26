@@ -15,7 +15,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
 1. In the repository-root `.env` (see `.env.example`), set:
    - `NEXT_PUBLIC_PRIVY_APP_ID` and `PRIVY_APP_SECRET`, from the Privy dashboard. The app needs email login and Ethereum embedded wallets turned on, and `http://localhost:3000` added to its allowed origins.
    - `NEXT_PUBLIC_FACTORY_ADDRESS` and `FACTORY_ADDRESS` (`0x80b66347374C6df4f157368497201aa63a371f60` on chain 97).
-   - `NODEREAL_API_KEY`, which the recipient page needs.
+   - `NODEREAL_API_KEY`, which serves payment history and public recipient receipts.
    - `AGENT_DEMO_ATTACK=1` for the live attack.
 2. Start the agent: `npm start` in `agent/`.
 3. Start the web app:
@@ -25,7 +25,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm run dev
    ```
 4. Open http://localhost:3000 and log in with your email.
-5. Visitors and signed-in owners share **Payment chat**, **Recipients**, and **Your vault**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
+5. Visitors and signed-in owners share **Payment chat**, **Recipients**, **Your vault**, and **History**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
 
@@ -103,6 +103,14 @@ For a plan whose only payable row is the demo address `0xbAd5…0bAd`, the card 
 The vault column has the owner's depeg limit: a slider from 0% to 20% (default 5%), kept in this browser for each vault and sent with each new plan as `depegThreshold`. It is the agent's policy, not a vault rule, so changing it needs no transaction. If the browser blocks storage, the limit still works until the page reloads.
 
 Open **Checks & notes → Stablecoin risk** on a payment plan to see the agent's Cournot reading: the exact claim, the probability as a bar with the owner's limit marked, the sources with links, the date and time of the reading in UTC, the market id and Cournot's request id. Below it, labeled "LeashPay's choice", is the agent's sentence about which coin it pays in, word for word as it appears in the text the owner signs. When Cournot is unavailable, the card says why and the plan keeps its coins. How the agent decides is in the [agent README](../agent/README.md#depeg-guard-cournot).
+
+### Payment history
+
+Open **History** to see confirmed LeashPay payments, newest first. Choose **All**, **Sent**, or **Received** and use **Load 10 more** for older receipts. Select **Receipt** to see the transaction on BscScan. A signed-in wallet can see incoming payments before activating its own vault.
+
+Select a name in **Recipients** for the saved wallet details, cap, dated receipts and all-time totals with that contact in each stablecoin. The totals include payments before the first page. A payment to a saved contact’s LeashPay vault also belongs to that contact.
+
+The web server resolves the wallet from the Privy session for `GET /api/history`. It reads finalized `Paid` events from vaults created by the configured factory on BSC testnet. Bank previews, vault deposits and ordinary token transfers are outside the history. The existing server-side `NODEREAL_API_KEY` powers both history views.
 
 ### The recipient page
 
