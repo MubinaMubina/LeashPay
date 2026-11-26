@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { encodeFunctionData, type Address } from "viem";
+import { encodeFunctionData, getAddress, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { explorerAddress, shortAddress } from "@/lib/chain";
 import { errorText, useApi, useSendAndWait } from "@/lib/client";
 import { parseStoredThreshold } from "@/lib/depeg";
-import { DEMO_RECIPIENTS } from "@/lib/demo";
 import { formatAmount } from "@/lib/plan-progress";
 import { Chat } from "./Chat";
+import { Recipients } from "./Recipients";
 
 interface VaultJson {
   vault: string;
@@ -180,15 +180,7 @@ export function Dashboard({ vault }: { vault: Address }) {
           />
           <div className="sub">Cournot's USDC depeg risk is checked before each plan. Applies to the next plan you send.</div>
 
-          <div className="label">Recipients</div>
-          {DEMO_RECIPIENTS.map((r) => (
-            <div className="person" key={r.address}>
-              <span>
-                {r.name} <small>· {r.country}</small>
-              </span>
-              <small>{formatAmount(r.monthlyCap.toString(), "").trim()} / 30 days</small>
-            </div>
-          ))}
+          <Recipients vault={vault} agent={info ? (info.agent ? getAddress(info.agent) : null) : undefined} />
         </div>
 
         {/* Pinned to the bottom so it is never scrolled away. */}
