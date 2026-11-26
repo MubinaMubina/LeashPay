@@ -10,16 +10,14 @@ import styles from "./Welcome.module.css";
 
 function PayoutTagline() {
   const [showApproval, setShowApproval] = useState(false);
-  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (paused) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let timer: number | undefined;
     function sync() {
       window.clearInterval(timer);
       if (!motion.matches && !document.hidden) {
-        timer = window.setInterval(() => setShowApproval(current => !current), 1000);
+        timer = window.setInterval(() => setShowApproval(current => !current), 4_000);
       }
     }
     sync();
@@ -30,17 +28,12 @@ function PayoutTagline() {
       motion.removeEventListener("change", sync);
       document.removeEventListener("visibilitychange", sync);
     };
-  }, [paused]);
+  }, []);
 
-  const action = paused ? "Resume rotating text" : "Pause rotating text";
   return (
-    <div className={styles.tagline}>
-      <div className={styles.phrases}>
-        <span data-active={!showApproval}>Stablecoin payouts</span>{" "}
-        <span data-active={showApproval}>Your agent plans the payout. You approve it.</span>
-      </div>
-      <button type="button" className={styles.rotationControl} aria-label={action} title={action}
-        data-paused={paused} onClick={() => setPaused(current => !current)} />
+    <div className={styles.phrases}>
+      <span data-active={!showApproval}>Stablecoin payouts</span>{" "}
+      <span data-active={showApproval}>Your agent plans the payout. You approve it.</span>
     </div>
   );
 }
@@ -71,16 +64,12 @@ export default function Home() {
               <Link href="/workspace">Explore workspace <span aria-hidden="true">→</span></Link>
             </div>
           </div>
-          <Image className={styles.vaultArt} src="/illustrations/payment-vault.webp" alt=""
-            width={1200} height={800} sizes="(max-width: 700px) 90vw, (max-width: 1250px) 48vw, 590px" loading="eager" />
+          <Image className={styles.watermark} src="/icon.svg" alt="" width={256} height={256} />
         </section>
         <section className={styles.example} id="example-payout" aria-labelledby="example-title" tabIndex={-1}>
           <figure className={styles.request}>
-            <Image src="/illustrations/payout-slip.webp" alt="" width={112} height={112} />
-            <figcaption>
-              <span>In payment chat</span>
-              <blockquote>“Pay Linh 300 USDT and Marco 450 USDT.”</blockquote>
-            </figcaption>
+            <figcaption>In payment chat</figcaption>
+            <blockquote>“Pay Linh 300 USDT and Marco 450 USDT.”</blockquote>
           </figure>
           <div className={styles.payout}>
             <header>

@@ -33,9 +33,9 @@
   letter-spacing: -.054em;
   text-wrap: balance;
 }
-.tagline { display: flex; align-items: start; gap: 8px; margin-top: 12px; }
 .phrases {
   display: grid;
+  margin-top: 12px;
   min-width: 0;
   color: var(--green);
   font: italic 600 clamp(25px, 2.5vw, 36px)/1.15 var(--serif);
@@ -44,25 +44,8 @@
 /* Both phrases size the same grid cell, including when the longer one wraps. */
 .phrases span { grid-area: 1 / 1; opacity: 0; transition: opacity 160ms ease-out; }
 .phrases span[data-active="true"] { opacity: 1; }
-.rotationControl {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-.rotationControl:hover { background: #efefe4; }
-.rotationControl::before { content: ""; width: 4px; height: 10px; box-sizing: content-box; border-inline: 2px solid; }
-.rotationControl[data-paused="true"]::before { width: 0; height: 0; margin-left: 2px; border: solid transparent; border-width: 5px 0 5px 8px; border-left-color: currentColor; }
 @media (prefers-reduced-motion: reduce) {
   .phrases span { grid-area: auto; opacity: 1; transition: none; }
-  .rotationControl { display: none; }
 }
 .intro p { max-width: 440px; margin: 20px 0 26px; color: var(--muted); font-size: clamp(16px, 1.4vw, 18px); line-height: 1.55; }
 .actions { flex-wrap: wrap; gap: 4px 22px; }
@@ -80,7 +63,14 @@
 }
 .signIn:hover:enabled { background: var(--green); }
 .signIn:disabled { opacity: .65; cursor: wait; }
-.vaultArt { display: block; width: 100%; max-width: 480px; height: auto; justify-self: center; }
+.watermark {
+  display: block;
+  width: clamp(144px, 20vw, 256px);
+  height: auto;
+  justify-self: center;
+  opacity: .12;
+  pointer-events: none;
+}
 
 .example {
   display: grid;
@@ -94,14 +84,12 @@
 .request {
   margin: 0;
   display: flex;
-  align-items: center;
-  gap: clamp(14px, 2vw, 26px);
+  flex-direction: column;
+  justify-content: center;
   border-radius: 16px 0 0 16px;
   background: #efefe4;
 }
-.request img { width: clamp(64px, 7.5vw, 108px); height: auto; flex: none; }
-.request figcaption { min-width: 0; }
-.request figcaption > span { color: var(--muted); font-size: 13px; font-weight: 600; }
+.request figcaption { color: var(--muted); font-size: 13px; font-weight: 600; }
 .request blockquote { max-width: 19ch; margin: 8px 0 0; font: 500 clamp(23px, 2.2vw, 33px)/1.16 var(--serif); letter-spacing: -.025em; }
 .payout { border-left: 1px solid var(--line); }
 .payout header, .payout dl > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -121,13 +109,12 @@
   .page { padding: 0 max(20px, env(safe-area-inset-right)) 28px max(20px, env(safe-area-inset-left)); }
   .header { min-height: 60px; }
   .layout { max-width: 480px; }
-  .hero { grid-template-columns: 1fr; gap: 16px; padding-block: 36px 22px; }
+  .hero { position: relative; isolation: isolate; grid-template-columns: 1fr; padding-block: 36px 26px; }
   .intro h1 { font-size: clamp(43px, 9.4vw, 57px); }
   .intro p { margin: 14px 0 18px; }
-  .vaultArt { width: min(100%, 310px); }
+  .watermark { position: absolute; z-index: -1; top: 18px; right: 0; width: clamp(76px, 23vw, 110px); opacity: .08; }
   .example { grid-template-columns: 1fr; }
-  .request { border-radius: 16px 16px 0 0; gap: 16px; }
-  .request img { width: 65px; }
+  .request { border-radius: 16px 16px 0 0; }
   .request blockquote { font-size: 23px; margin-top: 4px; }
   .payout { border-left: 0; border-top: 1px solid var(--line); }
 }
@@ -141,5 +128,4 @@
 
 @media (max-width: 480px) {
   .actions { flex-direction: column; align-items: stretch; gap: 2px; }
-  .vaultArt { width: min(100%, 255px); }
 }
