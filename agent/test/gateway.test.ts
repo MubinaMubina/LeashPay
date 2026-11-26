@@ -14,6 +14,7 @@ import {
   keccak256,
   pad,
   parseAbi,
+  zeroAddress,
   type Address,
   type Hex,
 } from "viem";
@@ -21,7 +22,7 @@ import { describe, expect, it, vi } from "vitest";
 import { leashVaultAbi } from "../src/abi/generated";
 import type { PayStep } from "../src/chain/gateway";
 import { ViemVaultGateway, createChainClients, judgePayment } from "../src/chain/viem-gateway";
-import { AGENT, LINH, MARCO, USDC, USDT, VAULT } from "./fakes";
+import { AGENT, LINH, MARCO, OWNER, USDC, USDT, VAULT } from "./fakes";
 
 const HASH = pad("0x1", { size: 32 }) as Hex;
 const OTHER = pad("0xee", { size: 32 }) as Hex;
@@ -157,6 +158,53 @@ describe("ViemVaultGateway.paymentFee", () => {
     await expect(new ViemVaultGateway(client, null, AGENT, true).paymentFee(VAULT)).rejects.toBe(missingSelector);
     readContract.mockRejectedValueOnce(new Error("RPC unavailable"));
     await expect(new ViemVaultGateway(client, null, AGENT).paymentFee(VAULT)).rejects.toThrow("RPC unavailable");
+  });
+});
+
+describe("returning owners on the published V2 deployment", () => {
+  const v1Factory = "0x80b66347374C6df4f157368497201aa63a371f60";
+  const v2Factory = "0xec8339Aa64277e759475c6777D7832652a390b99";
+  const unavailable = new Error("Factory lookup unavailable");
+  const noTerms = new ContractFunctionRevertedError({ abi: feeAbi, functionName: "paymentTerms", data: "0x", message: "execution reverted" });
+
+  function registries(v2: Address | Error, v1: Address | Error) {
+    const readContract = vi.fn(async ({ address, functionName, args }: { address: Address; functionName: string; args?: Address[] }) => {
+      if (functionName === "owner") return OWNER;
+      if (functionName === "config" && address === v2Factory) return { usdt: USDT };
+      if (functionName === "paymentTerms") {
+        if (address === MARCO) return [USDT, AGENT, 10n ** 16n] as const;
+        throw noTerms;
+      }
+      if (functionName !== "vaultOf" || args?.[0] !== OWNER) throw new Error("Unexpected contract read");
+      const registered = address === v2Factory ? v2 : address === v1Factory ? v1 : zeroAddress;
+      if (registered instanceof Error) throw registered;
+      return registered;
+    });
+    return new ViemVaultGateway({ readContract } as never, null, v2Factory);
+  }
+
+  it("uses the original V1 vault only when the configured factory has no vault", async () => {
+    const original = registries(zeroAddress, VAULT);
+    expect(await original.vaultOf(OWNER)).toBe(VAULT);
+    expect(await original.paymentFee(VAULT)).toBeUndefined();
+    expect(await registries(zeroAddress, zeroAddress).vaultOf(OWNER)).toBeNull();
+    expect(await registries(MARCO, VAULT).vaultOf(OWNER)).toBe(MARCO);
+    expect(await registries(MARCO, unavailable).paymentFee(MARCO)).toEqual({
+      token: "USDT", amount: "10000000000000000", recipient: AGENT,
+    });
+  });
+
+  it("propagates registry read failures without guessing which vault the owner has", async () => {
+    await expect(registries(unavailable, VAULT).vaultOf(OWNER)).rejects.toBe(unavailable);
+    await expect(registries(zeroAddress, unavailable).vaultOf(OWNER)).rejects.toBe(unavailable);
+  });
+
+  it("requires a positive registration of the exact V1 vault to exempt it from the V2 fee", async () => {
+    await expect(registries(zeroAddress, VAULT).paymentFee(LINH)).rejects.toThrow();
+    await expect(registries(zeroAddress, zeroAddress).paymentFee(VAULT)).rejects.toThrow();
+    await expect(registries(unavailable, VAULT).paymentFee(VAULT)).rejects.toBe(unavailable);
+    await expect(registries(VAULT, VAULT).paymentFee(VAULT)).rejects.toBe(noTerms);
+    await expect(registries(VAULT, zeroAddress).paymentFee(VAULT)).rejects.toBe(noTerms);
   });
 });
 

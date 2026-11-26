@@ -38,8 +38,27 @@ const feeAbi = parseAbi([
   "event PaymentFeeCharged(address indexed recipient, address indexed token, uint256 amount, bytes32 indexed ref)",
 ]);
 
-// The immutable V1 factory in contracts/deployments/97.json only creates fee-free vaults.
+// These immutable BSC testnet factories share the same tokens and default agent.
 const LEGACY_FACTORY_97: Address = "0x80b66347374C6df4f157368497201aa63a371f60";
+const SPONSORED_FACTORY_97: Address = "0xec8339Aa64277e759475c6777D7832652a390b99";
+
+export function publishedLegacyFactory(factory: Address | null): Address | null {
+  return factory && isAddressEqual(factory, SPONSORED_FACTORY_97) ? LEGACY_FACTORY_97 : null;
+}
+
+/** A failed registry read leaves the owner's vault unknown and propagates to the caller. */
+export async function registeredVault(
+  client: PublicClient, factory: Address, legacyFactory: Address | null, owner: Address, blockNumber?: bigint,
+): Promise<{ vault: Address; factory: Address } | null> {
+  const read = (address: Address) => client.readContract({
+    address, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner], blockNumber,
+  });
+  const vault = await read(factory);
+  if (vault !== zeroAddress) return { vault, factory };
+  if (!legacyFactory) return null;
+  const original = await read(legacyFactory);
+  return original === zeroAddress ? null : { vault: original, factory: legacyFactory };
+}
 
 type AgentWallet = WalletClient<Transport, Chain, PrivateKeyAccount>;
 
@@ -134,6 +153,7 @@ export class ViemVaultGateway implements VaultGateway {
     private readonly walletClient: AgentWallet | null,
     private readonly factory: Address | null,
     private readonly requirePaymentTerms = false,
+    private readonly legacyFactory = publishedLegacyFactory(factory),
   ) {}
 
   get agentAddress(): Address | null {
@@ -153,17 +173,22 @@ export class ViemVaultGateway implements VaultGateway {
   }
 
   async vaultOf(owner: Address): Promise<Address | null> {
-    const vault = await this.publicClient.readContract({
-      address: this.requireFactory(),
-      abi: leashVaultFactoryAbi,
-      functionName: "vaultOf",
-      args: [owner],
-    });
-    return vault === zeroAddress ? null : vault;
+    const registered = await registeredVault(this.publicClient, this.requireFactory(), this.legacyFactory, owner);
+    return registered?.vault ?? null;
   }
 
-  async paymentFee(vault: Address): Promise<PaymentFee | undefined> {
-    if (!this.requirePaymentTerms && this.factory && isAddressEqual(this.factory, LEGACY_FACTORY_97)) return undefined;
+  async paymentFee(vault: Address, owner?: Address): Promise<PaymentFee | undefined> {
+    if (this.legacyFactory) {
+      const factory = this.requireFactory();
+      const account = owner ?? await this.publicClient.readContract({ address: vault, abi: leashVaultAbi, functionName: "owner" });
+      const registered = await registeredVault(this.publicClient, factory, this.legacyFactory, account);
+      if (!registered || !isAddressEqual(vault, registered.vault)) {
+        throw new ConfigurationError("This vault does not match the owner's registered vault. Request a new plan.");
+      }
+      if (!isAddressEqual(registered.factory, factory)) return undefined;
+    } else if (!this.requirePaymentTerms && this.factory && isAddressEqual(this.factory, LEGACY_FACTORY_97)) {
+      return undefined;
+    }
     let terms: readonly [Address, Address, bigint];
     try {
       terms = await this.publicClient.readContract({ address: vault, abi: feeAbi, functionName: "paymentTerms" });
@@ -173,7 +198,7 @@ export class ViemVaultGateway implements VaultGateway {
       const absent = err instanceof BaseError && err.walk((e) => e instanceof ContractFunctionZeroDataError ||
         (e instanceof ContractFunctionRevertedError && !e.data && (!e.raw || e.raw === "0x") &&
           (!e.reason || /^execution reverted\.?$/i.test(e.reason))));
-      if (absent && !this.requirePaymentTerms) return undefined;
+      if (absent && !this.requirePaymentTerms && !this.legacyFactory) return undefined;
       throw err;
     }
     const [token, recipient, amount] = terms;

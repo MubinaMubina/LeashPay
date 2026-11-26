@@ -24,7 +24,7 @@ LeashPay keeps the money in a smart contract, the **vault**. The AI agent can on
 
 ### Sponsored vaults on BSC testnet
 
-A new owner can activate a sponsored vault, add a recipient and approve a payout with **zero tBNB**. The agent pays the network fees. Before signing, the owner sees the recipient amount, the **0.01 USDT** fee per successful payout, and the maximum debit. A 20 USDT payout takes 20.01 USDT from the vault. The automated local walkthrough, public receipts and preview settings are in the [sponsored vault guide](docs/sponsored-vault.md).
+A new owner can activate a sponsored vault, add a recipient and approve a payout with **zero tBNB**. The agent pays the network fees. Before signing, the owner sees the recipient amount, the **0.01 USDT** fee per successful payout, and the maximum debit. A 20 USDT payout takes 20.01 USDT from a sponsored vault. Returning owners with an original vault keep their existing balance, recipients and fee-free payments. [Test both accounts, inspect the public receipts and configure hosting](docs/sponsored-vault.md).
 
 ### The three demo moments
 

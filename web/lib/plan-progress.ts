@@ -66,6 +66,7 @@ export interface PlanJson {
 }
 
 export type JournalEventJson =
+  | { type: "runway_inclusion"; at: string; included: boolean }
   | { type: "step_sent"; at: string; index: number; hash: string }
   | { type: "step_succeeded"; at: string; index: number; hash: string | null; note?: string }
   | { type: "step_failed"; at: string; index: number; hash: string | null; error: string }

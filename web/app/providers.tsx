@@ -29,7 +29,13 @@ export function Providers({ children }: { children: ReactNode }) {
         embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
         defaultChain: chain,
         supportedChains: [chain],
-        appearance: { theme: "light", accentColor: "#111827" },
+        appearance: {
+          theme: "#FFFDF7",
+          accentColor: "#191A17",
+          logo: <img src="/icon.svg" alt="LeashPay" width={48} height={48} />,
+          landingHeader: "Sign in to LeashPay",
+          loginMessage: "Enter your email to get a sign-in code.",
+        },
       }}
     >
       {children}

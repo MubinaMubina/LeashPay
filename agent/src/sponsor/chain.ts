@@ -1,11 +1,12 @@
 import {
   BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, ExecutionRevertedError,
   InsufficientFundsError, TransactionNotFoundError, TransactionReceiptNotFoundError, WaitForTransactionReceiptTimeoutError,
-  encodeFunctionData, hashTypedData, isAddressEqual, keccak256, padHex, parseAbi, verifyTypedData, zeroAddress, zeroHash,
+  encodeFunctionData, hashTypedData, isAddressEqual, keccak256, padHex, parseAbi, verifyTypedData, zeroHash,
   type Address, type Chain, type Hex, type PrivateKeyAccount, type PublicClient, type Transport, type TypedData, type WalletClient,
 } from "viem";
 import { bscTestnet } from "viem/chains";
 import { leashVaultAbi, leashVaultFactoryAbi } from "../abi/generated";
+import { publishedLegacyFactory, registeredVault } from "../chain/viem-gateway";
 import { ConfigurationError } from "../config";
 import { DEMO_RULES, RULES_PARAMETER, SponsorError, type SponsorExecute, type SponsorTypedData } from "./authorization";
 import { SponsorReverted, type SponsorChain } from "./service";
@@ -36,7 +37,10 @@ type AgentWallet = WalletClient<Transport, Chain, PrivateKeyAccount>;
 export class ViemSponsorChain implements SponsorChain {
   readonly relayer: Address;
 
-  constructor(private readonly client: PublicClient, private readonly wallet: AgentWallet, readonly factory: Address) {
+  constructor(
+    private readonly client: PublicClient, private readonly wallet: AgentWallet, readonly factory: Address,
+    private readonly legacyFactory = publishedLegacyFactory(factory),
+  ) {
     this.relayer = wallet.account.address;
   }
 
@@ -62,8 +66,11 @@ export class ViemSponsorChain implements SponsorChain {
   }
 
   async vaultOf(owner: Address, blockNumber?: bigint) {
-    const vault = await this.client.readContract({ address: this.factory, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner], blockNumber });
-    return vault === zeroAddress ? null : vault;
+    const registered = await registeredVault(this.client, this.factory, this.legacyFactory, owner, blockNumber);
+    if (registered && !isAddressEqual(registered.factory, this.factory)) {
+      throw new SponsorError(409, "You already have a V1 vault. Manage its recipients directly with your wallet.");
+    }
+    return registered?.vault ?? null;
   }
 
   async recipient(vault: Address, recipient: Address, blockNumber?: bigint) {

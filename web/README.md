@@ -24,8 +24,8 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm install
    npm run dev
    ```
-4. Open http://localhost:3000 and log in with your email.
-5. Visitors and signed-in owners share **Payment chat**, **Recipients**, **Your vault**, and **History**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
+4. Open http://localhost:3000. Choose **Continue with email** to sign in or **Explore workspace** to browse the public dashboard. Returning signed-in owners go directly to the dashboard.
+5. Visitors and signed-in owners share **Payment chat**, **Recipients**, **Your vault**, and **Cash flow**. Cash flow opens to confirmed payment history, with the **30-day forecast** alongside it. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm the request in your wallet. With sponsorship enabled, the agent pays the testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
 
@@ -46,6 +46,8 @@ The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/a
 | Web route | Agent call |
 |---|---|
 | `GET /api/vault` | `GET /vaults/:owner` |
+| `GET /api/runway` | `GET /vaults/:owner/runway` |
+| `POST /api/runway/inclusion` | `POST /runway/inclusion` with the session owner, plan ID and inclusion choice |
 | `GET /api/directory` | `GET /directory?owner=` |
 | `POST /api/directory` | `POST /directory` |
 | `POST /api/chat` | `POST /chat` |
@@ -64,6 +66,14 @@ The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/a
   - If the agent is busy with another plan, the card offers Retry.
   - Retry and "Check again" always sign a fresh approval for the same plan, whose id is kept in the address bar, so a reload resumes it and nothing is paid twice.
 
+### 30-day forecast
+
+In **Cash flow → 30-day forecast**, open **Choose payouts** to include dated payment plans. To add a bill, prepare a payment in chat with a recipient, amount and due date. Selecting it saves a forecast preference and requires no wallet transaction. When a coin is projected to run short, **View forecast** in the vault opens this view directly.
+
+The forecast starts from the vault’s liquid USDT and USDC and projects each balance through today plus 29 days (UTC). It assumes zero new deposits and swaps. Selected overdue amounts are due today. Confirmed payments drop out, including individual rows of partially paid plans. A selected payout awaiting its receipt pauses the projection until the agent knows the outcome.
+
+A shortfall starts the day either coin goes negative. A low-buffer week ends with zero of a coin it used, or too little of that coin to cover the next seven days of included payouts within the forecast window.
+
 ### Payment chat
 
 Type a request in English or French, or choose an action on the help card. “How much do I have?” reads the vault's USDT and USDC balances and reports the USDT value held in T-bills separately. “Who can I pay?” lists three named, vault-authorized recipients per page. **View all recipients** takes you to the full directory.
@@ -74,7 +84,7 @@ Type a request in English or French, or choose an action on the help card. “Ho
 
 Opening an account only looks up the wallet’s existing vault. A new account can open with zero tBNB, zero stablecoins and no recipients. Existing vaults open the payment dashboard at any balance. A failed lookup offers a retry and leaves balances marked unavailable. [Account logic](lib/onboarding.ts)
 
-**Activate vault** is optional. The owner confirms one transaction to create a vault and pays its testnet network fee in tBNB. The app never mints test funds or adds contacts during signup or activation. For a rehearsal, use a funded test vault and the [demo wallet list](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet).
+**Activate vault** is optional. With the published V2 deployment enabled, the owner signs an activation message and the agent pays the network fee. Returning owners with only a V1 vault reopen that vault with its existing balance, recipients and fee-free payment terms. The original V1 deployment uses an owner-paid creation transaction. A newly activated vault starts empty. [Setup and fees](../docs/sponsored-vault.md) · [Demo wallets](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet)
 
 In **Your vault**, **Add money** and **Withdraw** preview a bank transfer in either direction. Enter the USD amount to deposit or receive. The preview applies an illustrative transfer fee of 1% of the entered bank amount, rounded to the nearest cent. A $200 deposit converts $198 after the $2 fee. To receive $200 at the bank, the vault covers $202. The preview divides the vault-side amount by the selected coin’s USD price to estimate the USDT or USDC. CoinMarketCap supplies the rate and quote time. If the rate is unavailable, the preview labels the $1 example explicitly. The amount stays in the browser. Both previews are available before login and after activation. The final buttons are disabled.
 
@@ -84,7 +94,7 @@ A visitor can type in the chat and explore the recipient directory. Sending a me
 
 The **Recipients** tab searches the owner's directory by name and shows ten matches per page. The app reads vault limits for that page. Select **Add recipient** to enter a name, wallet address, country, currency and monthly cap. Switching back to **Payment chat** preserves the conversation and the message draft.
 
-- **Two writes, vault first:** the owner's wallet sends `setRecipient(address, true, monthlyCap)`, then the app saves the name to the agent's directory. The agent's key can't do the first write, which is why "send all funds to 0xBAD…" is refused.
+- The owner authorizes the address and cap first. On a sponsored vault the agent submits the signed addition. On a V1 vault the owner's wallet sends `setRecipient(address, true, monthlyCap)`. The app then saves the contact's name to the agent's directory.
 - **Interrupted adds:** if the wallet popup is closed or the agent is down between the two writes, submitting the same recipient again finishes it.
 - If the vault already allows the address at the requested cap, the form can save the name or update the reviewed country and currency directly. It checks for competing directory edits before saving.
 - The form rejects conflicting name/address pairs, reserved addresses and invalid caps before opening a wallet prompt. The chat leaves the cap blank when it cannot read the requested amount. [Recipient validation](lib/recipients.ts)
@@ -109,17 +119,17 @@ Open **Checks & notes → Stablecoin risk** on a payment plan to see the agent's
 
 ### Payment history
 
-Open **History** to see confirmed LeashPay payments, newest first. Choose **All**, **Sent**, or **Received** and use **Load 10 more** for older receipts. Select **Receipt** to see the transaction on BscScan. A signed-in wallet can see incoming payments before activating its own vault.
+Open **Cash flow → History** to see confirmed LeashPay payments, newest first. Choose **All**, **Sent**, or **Received** and use **Load 10 more** for older receipts. Select **Receipt** to see the transaction on BscScan. A signed-in wallet can see incoming payments before activating its own vault.
 
 Select a name in **Recipients** for the saved wallet details, cap, dated receipts and all-time totals with that contact in each stablecoin. The totals include payments before the first page. A payment to a saved contact’s LeashPay vault also belongs to that contact.
 
-The web server resolves the wallet from the Privy session for `GET /api/history`. It reads finalized `Paid` events from vaults created by the configured factory on BSC testnet. Bank previews, vault deposits and ordinary token transfers are outside the history. The existing server-side `NODEREAL_API_KEY` powers both history views.
+The web server resolves the wallet from the Privy session for `GET /api/history`. With the published V2 factory selected, it reads finalized `Paid` events from vaults created by both V2 and the original V1 factory. A V1-only or custom deployment reads its configured factory. Bank previews, vault deposits and ordinary token transfers are outside the history. The server-side `NODEREAL_API_KEY` powers both history views.
 
 ### The recipient page
 
 `/r/<address>` lists what that address received from every LeashPay vault, newest first.
 - **Why NodeReal:** the public BSC testnet RPC refuses log searches, so the server searches through NodeReal in 50,000-block chunks.
-- **Which vaults count:** only `Paid` events from vaults the factory created.
+- The page includes verified `Paid` events from the same factories as the wallet history, addressed to the exact public address in the URL.
 - **Failures:** a failed search shows an error, never "no payments". "Cash out" is mocked.
 - **Local value:** for a demo recipient, each payment also shows "≈ 25,809 VND today" and the rate's time, from `/api/fx/:currency`. The route is public like the page, so it answers only VND, PHP and THB, keeps `CMC_API_KEY` on the server, caches each rate for 5 minutes and never echoes CoinMarketCap's errors. Without a rate the page still shows the coin amounts.
 

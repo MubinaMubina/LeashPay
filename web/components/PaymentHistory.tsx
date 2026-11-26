@@ -92,7 +92,7 @@ export function PaymentList({ filter = "all", directory = [], contact, fresh = f
       </div>
       <h3 className="activity-title">Payment activity</h3>
     </>}
-    {!page && loading && <Skeleton variant="receipt" label="Loading confirmed payments" />}
+    {!page && loading && <Skeleton variant="history" label="Loading confirmed payments" />}
     {page && !page.payments.length && <p className="history-empty">
       {contact ? `No confirmed payments with ${contact.name} yet.` : filter === "sent" ? "You haven’t sent any LeashPay payments yet."
         : filter === "received" ? "You haven’t received any LeashPay payments yet." : "No confirmed LeashPay payments yet."}

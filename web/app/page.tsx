@@ -1,40 +1,44 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import type { Address } from "viem";
+import Link from "next/link";
 import { Brand } from "@/components/Brand";
-import { AccountWorkspace } from "@/components/AccountWorkspace";
-import { explorerAddress, shortAddress } from "@/lib/chain";
-import { useOwnerWallet } from "@/lib/client";
+import { Workspace } from "@/components/Workspace";
+import styles from "./Welcome.module.css";
 
 export default function Home() {
-  const { ready, authenticated, login, logout, user } = usePrivy();
-  const wallet = useOwnerWallet();
-  const owner = ready && authenticated ? wallet : undefined;
+  const { ready, authenticated, login } = usePrivy();
+  if (authenticated) return <Workspace />;
 
   return (
-    <>
-      <header className="topbar">
+    <div className={styles.page}>
+      <header className={styles.header}>
         <Brand />
-        <div className="account">
-          <span className="net">BSC testnet</span>
-          {authenticated ? (
-            <>
-              <button className="avatar" popoverTarget="owner-menu" aria-label="Account menu">
-                {user?.email?.address?.slice(0, 1).toUpperCase() || "L"}
-              </button>
-              <div popover="auto" id="owner-menu" className="account-menu">
-                {user?.email?.address && <span>{user.email.address}</span>}
-                {owner && <a href={explorerAddress(owner.address)} target="_blank" rel="noreferrer">{shortAddress(owner.address)} ↗</a>}
-                <button className="link" onClick={logout}>Log out</button>
-              </div>
-            </>
-          ) : <button type="button" className="btn header-login" disabled={!ready} onClick={() => login()}>Log in</button>}
-        </div>
+        <span>BSC testnet</span>
       </header>
-
-      <AccountWorkspace key={authenticated ? `${user?.id}:${owner?.address.toLowerCase()}` : "visitor"}
-        owner={owner ? owner.address as Address : null} guest={ready && !authenticated} login={login} />
-    </>
+      <main className={styles.layout}>
+        <section className={styles.intro} aria-labelledby="welcome-title">
+          <h1 id="welcome-title">Pay your contractors in stablecoins.</h1>
+          <p>Tell LeashPay who to pay. Review the plan, then approve it from a vault that enforces your spending limits.</p>
+          <div className={styles.actions}>
+            <button className={styles.signIn} type="button" disabled={!ready} onClick={() => login()}>
+              Continue with email
+            </button>
+            <Link href="/workspace">Explore workspace <span aria-hidden="true">→</span></Link>
+          </div>
+        </section>
+        <section className={styles.payout} aria-labelledby="example-title">
+          <header>
+            <h2 id="example-title">Example payout</h2>
+            <span className={styles.status}>Awaiting approval</span>
+          </header>
+          <dl>
+            <div className={styles.row}><dt>Linh <small>Vietnam</small></dt><dd>300 USDT</dd></div>
+            <div className={styles.row}><dt>Marco <small>Philippines</small></dt><dd>450 USDT</dd></div>
+            <div className={styles.total}><dt>Total</dt><dd>750 USDT</dd></div>
+          </dl>
+        </section>
+      </main>
+    </div>
   );
 }

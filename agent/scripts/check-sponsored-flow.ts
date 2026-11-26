@@ -93,6 +93,15 @@ async function run() {
     assert.deepEqual(plan.payments.map(p => p.preview), [null], "the payment must pass the vault simulation");
     const approval = await read<{ message: string; expires: string; payEarly: boolean }>(`/plans/${plan.id}/approval`);
     assert(approval.message.includes("Maximum service fees: 0.01 USDT") && approval.message.includes("Maximum vault debit: 20.01 USDT"));
+    const omittedFee = approval.message.split("\n").filter(line => !/^(Service fee|Maximum service fees|Maximum vault debit):/.test(line)).join("\n");
+    const incomplete = await request(`/plans/${plan.id}/execute`, {
+      expires: approval.expires, payEarly: approval.payEarly, signature: await owner.signMessage({ message: omittedFee }),
+    });
+    assert.equal(incomplete.status, 401, "the V2 owner must sign both the payout and the fee");
+    assert.equal(await balances(vault), amount + fee, "an incomplete approval moved funds");
+    assert.equal(await publicClient.readContract({ address: usdt, abi: erc20Abi, functionName: "allowance",
+      args: [vault, terms.recipient] }), 0n, "expected no token allowance for the treasury");
+    console.log("Signing only the payout was refused. Vault balance stayed at 20.01 USDT and treasury allowance at zero.");
     console.log("Before signing: Casey receives 20 USDT; service fee 0.01 USDT; maximum debit 20.01 USDT.");
     const signed = { expires: approval.expires, payEarly: approval.payEarly, signature: await owner.signMessage({ message: approval.message }) };
     type Run = { results: { status: string; hash?: Hex }[] };

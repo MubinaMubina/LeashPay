@@ -1,18 +1,17 @@
-import { createPublicClient, http, parseAbiItem, type Address } from "viem";
+import { createPublicClient, http, parseAbiItem } from "viem";
 import { leashVaultFactoryAbi } from "./abi.generated";
 import { chain } from "./chain";
-import { events, type LogReader } from "./recipient-logs";
+import { events } from "./recipient-logs";
 import { sentPaymentsWithFees, type HistoryReader, type PaidLog } from "./payment-history";
 
 const feeCharged = parseAbiItem("event PaymentFeeCharged(address indexed recipient, address indexed token, uint256 amount, bytes32 indexed ref)");
 
 /** Server-only. RPC failures can contain the URL, so route handlers return sanitized errors. */
-export function nodeRealReader(): (HistoryReader & LogReader) | null {
+export function nodeRealReader(): HistoryReader | null {
   const key = process.env.NODEREAL_API_KEY;
   if (!key) return null;
   const client = createPublicClient({ chain, transport: http(`https://bsc-testnet.nodereal.io/v1/${key}`, { timeout: 20_000 }) });
   return {
-    getBlockNumber: () => client.getBlockNumber(),
     getTokens: factory => client.readContract({ address: factory, abi: leashVaultFactoryAbi, functionName: "config" }),
     finalizedBlock: async () => (await client.getBlock({ blockTag: "finalized" })).number,
     getVaultCreatedLogs: async (factory, fromBlock, toBlock) =>

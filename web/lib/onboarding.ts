@@ -1,15 +1,33 @@
-import { encodeFunctionData, zeroAddress, type Address, type Hex } from "viem";
+import { encodeFunctionData, isAddress, zeroAddress, type Address, type Hex } from "viem";
 import { leashVaultFactoryAbi } from "./abi.generated";
-import { FACTORY_ADDRESS } from "./chain";
+import { FACTORY_ADDRESS, VAULT_FACTORIES } from "./chain";
 import { publicClient } from "./client";
 import { DEMO_RULES } from "./demo";
 import type { SponsoredActionRunner } from "./sponsorship";
 
-export async function readOwnerVault(owner: Address): Promise<Address | null> {
+export interface OwnerVault {
+  address: Address;
+  factory: Address;
+}
+
+async function vaultAt(owner: Address, factory: Address): Promise<Address | null> {
   const vault = await publicClient.readContract({
-    address: FACTORY_ADDRESS, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner],
+    address: factory, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner],
   });
+  if (!isAddress(vault, { strict: false })) throw new Error("Couldn’t read a valid vault address from the factory.");
   return vault === zeroAddress ? null : vault;
+}
+
+export async function resolveOwnerVault(owner: Address): Promise<OwnerVault | null> {
+  for (const factory of VAULT_FACTORIES) {
+    const address = await vaultAt(owner, factory);
+    if (address) return { address, factory };
+  }
+  return null;
+}
+
+export async function readOwnerVault(owner: Address): Promise<Address | null> {
+  return (await resolveOwnerVault(owner))?.address ?? null;
 }
 
 /** Only called when the owner explicitly chooses to enable on-chain payments. */
@@ -26,7 +44,7 @@ export async function activatePaymentVault(owner: Address, sendAndWait: (to: Add
     const data = encodeFunctionData({ abi: leashVaultFactoryAbi, functionName: "createVault", args: [DEMO_RULES] });
     await sendAndWait(FACTORY_ADDRESS, data);
   }
-  const vault = await readOwnerVault(owner);
+  const vault = await vaultAt(owner, FACTORY_ADDRESS);
   if (!vault || (sponsoredVault && vault.toLowerCase() !== sponsoredVault.toLowerCase())) {
     throw new Error("Vault creation was submitted. Check again in a moment to open your confirmed vault.");
   }

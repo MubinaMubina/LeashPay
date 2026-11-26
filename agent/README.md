@@ -89,6 +89,8 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 
 The optional BSC testnet relay pays the native gas for vault activation and for adding a recipient. Set `SPONSORED_FACTORY_ADDRESS` and `FACTORY_ADDRESS` to the same deployed V2 factory on chain 97. Fund its `defaultAgent` with tBNB and make that wallet available to the agent through `AGENT_PRIVATE_KEY`. The web server attaches the owner's authenticated session wallet to each request.
 
+On the published V2 deployment, the agent checks the V2 factory for the owner's wallet, then the published V1 factory if V2 returned an empty address. An existing V1 owner keeps that vault and its fee-free payment terms. For V2 the agent includes the fee and treasury in the approval and checks the matching transfers in the receipt. [Returning-owner behavior and test commands](../docs/sponsored-vault.md)
+
 | Endpoint | Request and response |
 |---|---|
 | `POST /sponsor/prepare` | Send `{ owner, action: "activate" }` or `{ owner, action: "addRecipient", recipient, monthlyCap }`. The cap is a decimal string in 18-decimal base units. The response contains the EIP-712 `typedData`, a Unix `deadline` in seconds, and a `nonce` for recipient additions. Numeric message fields are decimal strings. |
@@ -110,6 +112,8 @@ The relay reserves at most **0.05 tBNB per UTC day** against estimated maximum t
 | `POST /directory/rename` | Renames an existing address with `{ owner, address, expectedName, name }`. An identical retry returns the current directory. A conflicting name, deleted contact or newer rename returns 409. |
 | `POST /directory/remove` | Removes `{ owner, address }` from the directory after checking that the owner’s vault has disabled the address. Returns the updated list. |
 | `GET /vaults/:owner` | The owner's vault: owner, agent, paused, rules, today's spend and swaps, balances. 404 if they have none. |
+| `GET /vaults/:owner/runway` | Liquid USDT and USDC balances, dated plans, and weekly projections for 30 UTC calendar days. |
+| `POST /runway/inclusion` | Include or remove a dated plan in the owner's forecast. This only records a planning preference. |
 | `POST /chat` | Accepts `{ owner, message, context? }`. Claude selects a help, balance, recipients, add, clarification or payment card. Context contains up to six earlier messages from the owner's pending payment. For a complete payment the result contains the owner's words to submit to `POST /plans`. The route itself only selects the next action. |
 | `POST /plans` | `{ owner, message, depegThreshold? }` → a plan with warnings, notes and the vault's simulated verdict per payment. `depegThreshold` is the owner's depeg limit in percent (0 to 100, default 5); the plan's `depeg` field holds the guard's decision, each payment's `local` its amount in the recipient's currency, and `memory` what Living Brain recalled. Sends nothing. |
 | `GET /plans/:id` | The plan and every journal event for it. |

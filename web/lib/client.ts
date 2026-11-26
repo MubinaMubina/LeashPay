@@ -53,12 +53,17 @@ export function useSendAndWait() {
   const { sendTransaction } = useSendTransaction();
   const owner = useOwnerWallet();
   return useCallback(
-    async (to: Address, data: Hex, options?: { nonce: number; checkReceipt: (receipt: TransactionReceipt) => void }): Promise<Hex> => {
+    async (to: Address, data: Hex, options?: {
+      nonce?: number; checkReceipt?: (receipt: TransactionReceipt) => void; ownerPaidDescription?: string;
+    }): Promise<Hex> => {
       if (!owner) throw new Error("Your wallet isn't ready yet.");
-      const { hash } = await sendTransaction({ to, data, chainId: chain.id, nonce: options?.nonce }, { address: owner.address });
+      const { hash } = await sendTransaction({ to, data, chainId: chain.id, nonce: options?.nonce }, {
+        address: owner.address,
+        ...(options?.ownerPaidDescription && { sponsor: false, uiOptions: { showWalletUIs: true, description: options.ownerPaidDescription } }),
+      });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000 });
       if (receipt.status !== "success") throw new Error(`The transaction failed on-chain: ${hash}`);
-      options?.checkReceipt(receipt);
+      options?.checkReceipt?.(receipt);
       return hash;
     },
     [sendTransaction, owner],

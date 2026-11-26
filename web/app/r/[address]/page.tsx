@@ -90,7 +90,7 @@ export default function RecipientPage() {
 
       {load.kind === "ready" &&
         load.payments.map((p) => (
-          <div className="card received" key={p.hash}>
+          <div className="card received" key={`${p.hash}:${p.logIndex}`}>
             <div className="received-amount">{formatAmount(p.amount, TOKENS[p.token.toLowerCase()] ?? "tokens")}</div>
             {localValue(p) && <div className="received-local">{localValue(p)} today</div>}
             <div className="hint small">

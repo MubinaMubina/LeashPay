@@ -90,7 +90,7 @@ export interface VaultGateway {
   readonly agentAddress: Address | null;
   deployment(): Promise<DeploymentConfig>;
   vaultOf(owner: Address): Promise<Address | null>;
-  paymentFee(vault: Address): Promise<PaymentFee | undefined>;
+  paymentFee(vault: Address, owner?: Address): Promise<PaymentFee | undefined>;
   snapshot(vault: Address): Promise<VaultSnapshot>;
   /**
    * Runs pay() as a simulation. Returns the vault's refusal, or null if it would go through.

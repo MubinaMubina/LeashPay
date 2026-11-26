@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { encodeAbiParameters, formatUnits, getAbiItem, hashTypedData, keccak256, type Address } from "viem";
 import { leashVaultFactoryAbi } from "@/lib/abi.generated";
-import { FACTORY_ADDRESS, sponsoredSetupEnabled } from "@/lib/chain";
+import { FACTORY_ADDRESS, sponsoredSetupEnabled, vaultFactories } from "@/lib/chain";
 import { DEMO_RULES } from "@/lib/demo";
 import { runSponsoredAction, type SponsorAction } from "@/lib/sponsorship";
 
@@ -28,7 +28,14 @@ describe("sponsored deployment selection", () => {
   it("keeps an empty setting on the legacy flow and enables a matching address", () => {
     expect(sponsoredSetupEnabled(FACTORY_ADDRESS, undefined)).toBe(false);
     expect(sponsoredSetupEnabled(FACTORY_ADDRESS, "   ")).toBe(false);
-    expect(sponsoredSetupEnabled(FACTORY_ADDRESS, FACTORY_ADDRESS.toLowerCase())).toBe(true);
+    expect(sponsoredSetupEnabled(vault, vault.toLowerCase())).toBe(true);
+  });
+
+  it("looks up only the configured factory on custom and original deployments", () => {
+    expect(vaultFactories(vault)).toEqual([vault]);
+    const legacy = "0x80b66347374C6df4f157368497201aa63a371f60";
+    expect(vaultFactories(legacy)).toEqual([legacy]);
+    expect(sponsoredSetupEnabled(legacy, legacy)).toBe(false);
   });
 
   it.each(["wrong", recipient])("stops on an explicitly invalid or mismatched sponsor setting", (configured) => {

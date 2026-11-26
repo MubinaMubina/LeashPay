@@ -91,7 +91,8 @@ export async function localFixture() {
     const dex = await deploy("MockDEX", [usdt, usdc]);
     const config = { usdt, usdc, usdtFeed: feed, usdcFeed: feed, maxPriceAge: 90000n, tbill, dex, defaultAgent: sponsor };
     const factory = await deploy("SponsoredLeashVaultFactory", [config, admin.account.address]);
-    return { rpc, deployKey, agentKey, factory, dispose };
+    const deployLegacyFactory = () => deploy("LeashVaultFactory", [config]);
+    return { rpc, deployKey, agentKey, factory, deployLegacyFactory, dispose };
   } catch (error) {
     dispose();
     throw error;
@@ -99,13 +100,16 @@ export async function localFixture() {
 }
 
 /** Real relay, journal and executor. Only the natural-language draft is deterministic. */
-export function flowApp(rpc: string, agentKey: Hex, factory: Address, data: string) {
+export function flowApp(rpc: string, agentKey: Hex, factory: Address, data: string, options: { legacyFactory?: Address; sponsored?: boolean } = {}) {
   const { publicClient, walletClient } = createChainClients({ BSC_TESTNET_RPC_URL: rpc, AGENT_PRIVATE_KEY: agentKey });
   assert(walletClient);
-  const gateway = new ViemVaultGateway(publicClient, walletClient, factory, true);
+  const sponsored = options.sponsored ?? true;
+  const gateway = new ViemVaultGateway(publicClient, walletClient, factory, sponsored, options.legacyFactory);
   const journal = new Journal(path.join(data, "journal.jsonl"));
   const directory = new RecipientDirectory(path.join(data, "recipients.json"));
-  const sponsorship = new SponsorshipService(new ViemSponsorChain(publicClient, walletClient, factory), path.join(data, "sponsorships.json"));
+  const sponsorship = sponsored
+    ? new SponsorshipService(new ViemSponsorChain(publicClient, walletClient, factory, options.legacyFactory), path.join(data, "sponsorships.json"))
+    : undefined;
   const app = createApp({ gateway, journal, directory, sponsor: sponsorship, executor: new Executor({ gateway, journal }),
     chat: async ({ message }) => ({ kind: "payment", message }),
     planner: async () => ({ kind: "payment", scheduled_for: "now", notes: [], payments: [

@@ -1,15 +1,38 @@
 import type { useSignTypedData } from "@privy-io/react-auth";
 import {
-  encodeAbiParameters, formatUnits, getAbiItem, getAddress, getTypesForEIP712Domain, isAddress,
+  encodeAbiParameters, encodeFunctionData, formatUnits, getAbiItem, getAddress, getTypesForEIP712Domain, isAddress, isAddressEqual,
   keccak256, maxUint256, zeroAddress, type Address, type TypedDataParameter,
 } from "viem";
-import { leashVaultFactoryAbi } from "./abi.generated";
-import { chain, FACTORY_ADDRESS } from "./chain";
-import type { useApi } from "./client";
+import { leashVaultAbi, leashVaultFactoryAbi } from "./abi.generated";
+import { chain, FACTORY_ADDRESS, LEGACY_FACTORY_97, SPONSORED_FACTORY_97 } from "./chain";
+import type { useApi, useSendAndWait } from "./client";
 import { DEMO_RULES } from "./demo";
+import type { OwnerVault } from "./onboarding";
 
 export type SponsorAction = { action: "activate" } | { action: "addRecipient"; vault: Address; recipient: Address; monthlyCap: bigint };
 export type SponsoredActionRunner = (action: SponsorAction) => Promise<Address>;
+
+export function recipientAuthorizationFor(
+  vault: OwnerVault, sendAndWait: ReturnType<typeof useSendAndWait>, sponsor?: SponsoredActionRunner,
+) {
+  const relay = isAddressEqual(vault.factory, FACTORY_ADDRESS) && !isAddressEqual(vault.factory, LEGACY_FACTORY_97)
+    ? sponsor : undefined;
+  return {
+    vault: vault.address,
+    sponsored: Boolean(relay),
+    includesPaymentFees: Boolean(relay) || isAddressEqual(vault.factory, SPONSORED_FACTORY_97),
+    async authorize(recipient: Address, monthlyCap: bigint) {
+      if (relay) {
+        await relay({ action: "addRecipient", vault: vault.address, recipient, monthlyCap });
+      } else {
+        await sendAndWait(vault.address, encodeFunctionData({
+          abi: leashVaultAbi, functionName: "setRecipient", args: [recipient, true, monthlyCap],
+        }), { ownerPaidDescription: `Allow payments to ${recipient} with a cap of ${formatUnits(monthlyCap, 18)} USDT or USDC per 30 days. Your wallet pays the network fee in tBNB.` });
+      }
+    },
+  };
+}
+
 type Sign = ReturnType<typeof useSignTypedData>["signTypedData"];
 type SigningData = Parameters<Sign>[0];
 interface Preparation { typedData: SigningData; deadline: string; nonce?: string }

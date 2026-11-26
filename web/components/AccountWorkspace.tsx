@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { errorText, useSendAndWait, useSponsoredAction } from "@/lib/client";
-import { activatePaymentVault, readOwnerVault } from "@/lib/onboarding";
+import { activatePaymentVault, resolveOwnerVault, type OwnerVault } from "@/lib/onboarding";
+import { recipientAuthorizationFor } from "@/lib/sponsorship";
 import { Dashboard } from "./Dashboard";
+import { RecipientAuthorizationContext } from "./RecipientForm";
 import type { AccessPrompt } from "./AccessNotice";
 
 export function AccountWorkspace({ owner, guest, login }: { owner: Address | null; guest: boolean; login: () => void }) {
-  const [vault, setVault] = useState<Address | null>(null);
+  const [vault, setVault] = useState<OwnerVault | null>(null);
   const [phase, setPhase] = useState<"checking" | "inactive" | "activating" | "unavailable">("checking");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -19,7 +21,7 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
   useEffect(() => {
     if (!owner) return;
     let current = true;
-    void readOwnerVault(owner).then(found => {
+    void resolveOwnerVault(owner).then(found => {
       if (!current) return;
       if (found) setVault(found);
       else setPhase("inactive");
@@ -38,7 +40,8 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
     setPhase("activating");
     setError("");
     try {
-      setVault(await activatePaymentVault(owner, sendAndWait, sponsor));
+      await activatePaymentVault(owner, sendAndWait, sponsor);
+      retry();
     } catch (err) {
       setError(errorText(err));
       retry();
@@ -64,5 +67,8 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
     }
   }
 
-  return <Dashboard owner={owner} vault={vault} access={getPrompt()} />;
+  const authorization = vault && recipientAuthorizationFor(vault, sendAndWait, sponsor);
+  return <RecipientAuthorizationContext value={authorization}>
+    <Dashboard owner={owner} vault={vault?.address ?? null} access={getPrompt()} />
+  </RecipientAuthorizationContext>;
 }

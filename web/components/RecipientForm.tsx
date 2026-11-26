@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { encodeFunctionData, formatUnits, getAddress, type Address } from "viem";
-import { leashVaultAbi } from "@/lib/abi.generated";
-import { errorText, useApi, useOwnerWallet, useSendAndWait, useSponsoredAction } from "@/lib/client";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { formatUnits, getAddress, isAddressEqual, type Address } from "viem";
+import { errorText, useApi, useOwnerWallet } from "@/lib/client";
 import { readRecipientAuthorization, withVaultLock, type RecipientBook } from "@/lib/recipient-book";
 import { CURRENCIES, reviewRecipient, saveReviewedRecipient, type RecipientForm, type RecipientReview } from "@/lib/recipients";
+import type { recipientAuthorizationFor } from "@/lib/sponsorship";
+
+export const RecipientAuthorizationContext = createContext<ReturnType<typeof recipientAuthorizationFor> | null>(null);
 
 const EMPTY: RecipientForm = { name: "", address: "", country: "", currency: "VND", monthlyCap: "1000" };
 interface Props {
@@ -19,8 +21,8 @@ interface Props {
 export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, onCancel, onAdded }: Props) {
   const api = useApi();
   const owner = useOwnerWallet()?.address;
-  const sendAndWait = useSendAndWait();
-  const sponsor = useSponsoredAction();
+  const authorization = useContext(RecipientAuthorizationContext);
+  const sponsored = authorization?.sponsored;
   const [form, setForm] = useState<RecipientForm>(() => ({
     name: initial?.name ?? EMPTY.name,
     address: initial?.address ?? EMPTY.address,
@@ -34,7 +36,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, on
   const [busy, setBusy] = useState<string | null>(null);
   const working = useRef(false);
   const mounted = useRef(false);
-  const existingCapChange = sponsor && review?.allowed && review.action === "authorize";
+  const existingCapChange = sponsored && review?.allowed && review.action === "authorize";
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -48,6 +50,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, on
       return;
     }
     if (!owner) return setError("Your wallet isn't ready yet.");
+    if (!authorization || !isAddressEqual(authorization.vault, vault)) return setError("Couldn’t verify which vault to update. Reopen the recipient form.");
     if (agent === undefined) return setError("Still reading your vault. Try again in a moment.");
     working.current = true;
     onBusyChange?.(true);
@@ -71,13 +74,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, on
         authorize: async (recipient) => {
           ensureOpen();
           setBusy("Confirm in your wallet…");
-          if (sponsor) {
-            await sponsor({ action: "addRecipient", vault, recipient: recipient.address, monthlyCap: recipient.monthlyCap });
-            return;
-          }
-          await sendAndWait(vault, encodeFunctionData({
-            abi: leashVaultAbi, functionName: "setRecipient", args: [recipient.address, true, recipient.monthlyCap],
-          }));
+          await authorization.authorize(recipient.address, recipient.monthlyCap);
         },
         saveName: async ({ name, address, country, currency }, expectedDetails) => {
           ensureOpen();
@@ -131,7 +128,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, on
         <div className="recipient-review">
           <strong>{review.recipient.name}</strong>
           <p style={{ overflowWrap: "anywhere" }}>{review.recipient.address}</p>
-          <p>{formatUnits(review.recipient.monthlyCap, 18)} USDT or USDC per 30 days{sponsor ? ", including payment fees" : ""}</p>
+          <p>{formatUnits(review.recipient.monthlyCap, 18)} USDT or USDC per 30 days{authorization?.includesPaymentFees ? ", including payment fees" : ""}</p>
           <p>Local currency: {review.recipient.currency}{review.recipient.country && ` · ${review.recipient.country}`}</p>
           {review.storedDetails && (review.storedDetails.currency !== review.recipient.currency || review.storedDetails.country !== review.recipient.country) && (
             <p className="sub">Currently saved: {review.storedDetails.currency ?? "No local currency"} · {review.storedDetails.country ?? "No country"}.</p>
@@ -139,9 +136,9 @@ export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, on
           {review.action === "authorize" && <p className="sub">
             {existingCapChange
               ? `This address already has a cap of ${formatUnits(review.currentCap, 18)}. Keep it to save the contact, or open the saved contact and choose Edit cap.`
-              : review.allowed ? `The current cap is ${formatUnits(review.currentCap, 18)}. Your wallet will sign the cap change.`
-              : sponsor ? "Sign to allow payments to this address. LeashPay covers the network fee."
-              : "Your wallet will sign to allow payments to this address."}
+              : review.allowed ? `The current cap is ${formatUnits(review.currentCap, 18)}. Your wallet pays the network fee in tBNB when you confirm the change.`
+              : sponsored ? "Sign to allow payments to this address. LeashPay covers the network fee."
+              : "Confirm in your wallet to allow payments to this address. Your wallet pays the network fee in tBNB."}
           </p>}
           {review.action === "save-name" && <p className="sub">Your vault already allows this address at this cap. Only the directory needs updating.</p>}
           {review.action === "done" && <p className="sub">This name and address are already in your directory with this vault cap.</p>}
@@ -159,8 +156,8 @@ export function AddRecipientForm({ vault, agent, book, initial, onBusyChange, on
           <label>Monthly cap (USDT or USDC per 30 days)<input {...field("monthlyCap")} inputMode="decimal" /></label>
         </>
       )}
-      {!review && <p className="sub">{sponsor ? "LeashPay covers the network fee to add a new recipient."
-        : "Your wallet confirms who can receive payments from this vault."}</p>}
+      {!review && <p className="sub">{sponsored ? "LeashPay covers the network fee to add a new recipient."
+        : "Your wallet pays the network fee in tBNB when you confirm a new recipient."}</p>}
       {error && <p className="kill-error" role="alert">{error}</p>}
       <div className="add-actions">
         <button className="btn" type="submit" disabled={Boolean(busy)}>{busy ?? submitLabel}</button>

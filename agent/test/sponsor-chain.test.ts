@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   ContractFunctionZeroDataError, decodeFunctionData, keccak256, padHex, parseAbi, parseGwei,
   type Address, type Hex, type TypedData, zeroAddress, zeroHash,
@@ -5,7 +6,8 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_RULES, SponsorExecuteBody, sponsorTypedData } from "../src/sponsor/authorization";
 import { ViemSponsorChain } from "../src/sponsor/chain";
-import { AGENT, LINH, OWNER, OWNER_ACCOUNT, VAULT } from "./fakes";
+import { SponsorshipService } from "../src/sponsor/service";
+import { AGENT, LINH, OWNER, OWNER_ACCOUNT, VAULT, tempDir } from "./fakes";
 
 const factory = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
 const signature = "0x1234" as Hex;
@@ -36,6 +38,22 @@ function setup() {
 }
 
 describe("V2 testnet relayer", () => {
+  it("refuses activation and recipient changes for a V1-only owner before issuing or relaying an approval", async () => {
+    const { client, wallet } = setup();
+    const legacyFactory = "0x1111111111111111111111111111111111111112";
+    const readContract = async (request: { address: Address; functionName: string }) => {
+      if (request.functionName === "vaultOf") return request.address === legacyFactory ? VAULT : zeroAddress;
+      return client.readContract(request);
+    };
+    const chain = new ViemSponsorChain({ ...client, readContract } as never, wallet as never, factory, legacyFactory);
+    const service = new SponsorshipService(chain, path.join(tempDir(), "sponsorships.json"));
+    for (const request of [activation, addition]) {
+      await expect(service.prepare(request)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("V1") });
+      await expect(service.execute(request)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("V1") });
+    }
+    expect(wallet.prepareTransactionRequest).not.toHaveBeenCalled();
+  });
+
   it("checks the provider chain, deployed domain, configured factory address and agent", async () => {
     const { chain, client } = setup();
     expect(await chain.checkedTime()).toBe(1_800_000_000n);

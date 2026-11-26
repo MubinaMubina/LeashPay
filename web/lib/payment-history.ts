@@ -1,20 +1,16 @@
 import { isAddress, type Address, type Hex } from "viem";
-import { chunks, FACTORY_DEPLOY_BLOCK, limited } from "./recipient-logs";
+import {
+  chunks, FACTORY_DEPLOY_BLOCK, limited, logAddressFilter, newestReceiptFirst, receiptId,
+  type AddressFilter, type LogReader, type ReceiptLog,
+} from "./recipient-logs";
 import type { OwnerResult } from "./session";
 
 export type HistoryFilter = "all" | "sent" | "received";
 type Stablecoin = "USDT" | "USDC";
 type Direction = "sent" | "received" | "self";
 
-export interface PaidLog {
-  address: Address;
+export interface PaidLog extends ReceiptLog {
   recipient: Address;
-  token: Address;
-  amount: bigint;
-  ref: Hex;
-  hash: Hex;
-  block: bigint;
-  logIndex: number;
   fee?: { token: Address; amount: bigint };
 }
 
@@ -25,13 +21,16 @@ export function sentPaymentsWithFees(payments: PaidLog[], charges: PaidLog[]): P
   return payments.map(payment => ({ ...payment, fee: fees.get(key(payment)) }));
 }
 
-export interface HistoryReader {
-  finalizedBlock(): Promise<bigint>;
+export interface HistoryReader extends LogReader {
   getTokens(factory: Address): Promise<{ usdt: Address; usdc: Address }>;
-  getVaultCreatedLogs(factory: Address, from: bigint, to: bigint): Promise<{ owner: Address; vault: Address }[]>;
-  getPaidLogs(recipient: Address | Address[], from: bigint, to: bigint): Promise<PaidLog[]>;
-  getSentLogs(vault: Address, from: bigint, to: bigint): Promise<PaidLog[]>;
-  getBlockTimestamp(block: bigint): Promise<number>;
+  getVaultCreatedLogs(factories: AddressFilter, from: bigint, to: bigint): Promise<{ owner: Address; vault: Address }[]>;
+  getPaidLogs(recipient: AddressFilter, from: bigint, to: bigint): Promise<PaidLog[]>;
+  getSentLogs(vaults: AddressFilter, from: bigint, to: bigint): Promise<PaidLog[]>;
+}
+
+interface Party {
+  wallet: Address;
+  vaults: Address[];
 }
 
 interface Payment {
@@ -39,8 +38,8 @@ interface Payment {
   direction: Direction;
   symbol: Stablecoin;
   fee?: { amount: string; symbol: "USDT" };
-  /** The other party's wallet and, if known, their LeashPay vault. */
-  wallet: Address;
+  /** All of a contact's factory-issued vault addresses identify the same wallet in the contact filter. */
+  party: Party;
   vault?: Address;
   /** The actual destination for sent payments or emitting vault for received payments. */
   address: Address;
@@ -67,19 +66,32 @@ export interface HistoryPage {
   totals: Record<"sent" | "received", Record<Stablecoin, string>>;
 }
 
-export async function ownerPayments(owner: Address, factory: Address, reader: HistoryReader): Promise<Payment[]> {
-  const [head, tokens] = await Promise.all([reader.finalizedBlock(), reader.getTokens(factory)]);
+export async function ownerPayments(owner: Address, factories: Address | readonly Address[], reader: HistoryReader): Promise<Payment[]> {
+  const trusted = logAddressFilter(factories);
+  // The canonical V2/V1 pair uses the same stablecoins. Custom deployments use only their configured factory.
+  const active = typeof trusted === "string" ? trusted : trusted[0];
+  const [head, tokens] = await Promise.all([reader.finalizedBlock(), reader.getTokens(active)]);
   const tokenSymbols = new Map<string, Stablecoin>([[tokens.usdt.toLowerCase(), "USDT"], [tokens.usdc.toLowerCase(), "USDC"]]);
   const ranges = chunks(FACTORY_DEPLOY_BLOCK, head);
-  const created = (await limited(ranges.map(([from, to]) => () => reader.getVaultCreatedLogs(factory, from, to)))).flat();
-  const byVault = new Map(created.map(pair => [pair.vault.toLowerCase(), pair]));
-  const byOwner = new Map(created.map(pair => [pair.owner.toLowerCase(), pair]));
+  const created = (await limited(ranges.map(([from, to]) => () => reader.getVaultCreatedLogs(trusted, from, to)))).flat();
+  const byOwner = new Map<string, Party>();
+  const byVault = new Map<string, Party>();
+  for (const { owner: wallet, vault } of created) {
+    const key = wallet.toLowerCase();
+    const vaultKey = vault.toLowerCase();
+    if (byVault.has(vaultKey)) continue;
+    const party = byOwner.get(key) ?? { wallet, vaults: [] };
+    party.vaults.push(vault);
+    byOwner.set(key, party);
+    byVault.set(vaultKey, party);
+  }
   const me = owner.toLowerCase();
-  const ownVault = byOwner.get(me)?.vault;
-  const destinations = ownVault ? [owner, ownVault] : owner;
+  const ownVaults = byOwner.get(me)?.vaults ?? [];
+  const senders = ownVaults.length ? logAddressFilter(ownVaults) : null;
+  const destinations = logAddressFilter([owner, ...ownVaults]);
   const reads = ranges.flatMap(([from, to]) => {
     const incoming = () => reader.getPaidLogs(destinations, from, to);
-    return ownVault ? [incoming, () => reader.getSentLogs(ownVault, from, to)] : [incoming];
+    return senders ? [incoming, () => reader.getSentLogs(senders, from, to)] : [incoming];
   });
   const payments = new Map<string, Payment>();
   for (const log of (await limited(reads)).flat()) {
@@ -87,27 +99,32 @@ export async function ownerPayments(owner: Address, factory: Address, reader: Hi
     const symbol = tokenSymbols.get(log.token.toLowerCase());
     if (!sender || !symbol) continue;
     const target = log.recipient.toLowerCase();
-    const recipient = byVault.get(target) ?? byOwner.get(target);
-    const sent = sender.owner.toLowerCase() === me;
-    const received = target === me || target === ownVault?.toLowerCase();
+    const targetVaultOwner = byVault.get(target);
+    const recipient = targetVaultOwner ?? byOwner.get(target);
+    const sent = sender.wallet.toLowerCase() === me;
+    const received = target === me || targetVaultOwner?.wallet.toLowerCase() === me;
     if (!sent && !received) continue;
-    const other = sent ? recipient : sender;
-    payments.set(`${log.hash}:${log.logIndex}`, {
+    const party = sent ? recipient ?? { wallet: log.recipient, vaults: [] } : sender;
+    const destinationVault = targetVaultOwner ? log.recipient : recipient?.vaults.length === 1 ? recipient.vaults[0] : undefined;
+    const id = receiptId(log);
+    // A self-payment also matches the incoming query, which has no fee event attached.
+    if (payments.has(id) && !log.fee) continue;
+    payments.set(id, {
       log, symbol, direction: sent ? (received ? "self" : "sent") : "received",
       ...(sent && log.fee?.token.toLowerCase() === tokens.usdt.toLowerCase()
         ? { fee: { amount: String(log.fee.amount), symbol: "USDT" } } : {}),
-      wallet: other?.owner ?? log.recipient, vault: other?.vault, address: sent ? log.recipient : log.address,
+      party, vault: sent ? destinationVault : log.address, address: sent ? log.recipient : log.address,
     });
   }
-  return [...payments.values()].sort((a, b) => a.log.block === b.log.block
-    ? b.log.logIndex - a.log.logIndex : a.log.block > b.log.block ? -1 : 1);
+  return [...payments.values()].sort((a, b) => newestReceiptFirst(a.log, b.log));
 }
 
 const PAGE_SIZE = 10;
 export async function historyPage(payments: Payment[], filter: HistoryFilter, contact: string | null,
   before: string | null, reader: HistoryReader): Promise<HistoryPage> {
-  const party = contact?.toLowerCase();
-  const matches = payments.filter(p => !party || party === p.wallet.toLowerCase() || party === p.vault?.toLowerCase());
+  const address = contact?.toLowerCase();
+  const matches = payments.filter(({ party }) => !address || address === party.wallet.toLowerCase()
+    || party.vaults.some(vault => vault.toLowerCase() === address));
   const totals = { sent: { USDT: 0n, USDC: 0n }, received: { USDT: 0n, USDC: 0n } };
   for (const p of matches) {
     if (p.direction !== "received") totals.sent[p.symbol] += p.log.amount;
@@ -123,7 +140,7 @@ export async function historyPage(payments: Payment[], filter: HistoryFilter, co
     [block, await reader.getBlockTimestamp(block).catch(() => null)] as const)));
   const last = page.at(-1)?.log;
   return {
-    payments: page.map(({ log, ...p }) => ({ ...p, hash: log.hash, logIndex: log.logIndex,
+    payments: page.map(({ log, party, ...p }) => ({ ...p, wallet: party.wallet, hash: log.hash, logIndex: log.logIndex,
       amount: log.amount.toString(), block: log.block.toString(), timestamp: times.get(log.block) ?? null })),
     next: remaining.length > PAGE_SIZE && last ? `${last.block}.${last.logIndex}` : null,
     count: filtered.length,
@@ -135,7 +152,7 @@ export async function historyPage(payments: Payment[], filter: HistoryFilter, co
 }
 
 export function createHistoryHandler(deps: {
-  factory: Address; reader: HistoryReader | null; resolveOwner: (request: Request) => Promise<OwnerResult>;
+  factory: Address | readonly Address[]; reader: HistoryReader | null; resolveOwner: (request: Request) => Promise<OwnerResult>;
 }) {
   const cache = new Map<string, { started: number; result: Promise<Payment[]> }>();
   const json = (status: number, data: unknown) => Response.json(data, { status, headers: { "cache-control": "private, no-store" } });
