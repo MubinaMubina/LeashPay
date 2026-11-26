@@ -28,7 +28,7 @@ describe("public workspace", () => {
   it.each([true, false])("offers email sign-in and a public preview on the home page (ready: %s)", ready => {
     auth.ready = ready;
     const html = renderToStaticMarkup(createElement(Home));
-    expect(html).toContain("Pay your contractors in stablecoins.");
+    expect(html.replace(/<[^>]+>/g, "")).toContain("Pay your contractors in stablecoins.");
     expect(html).toContain("Example payout");
     expect(html).toMatch(/href="\/workspace"/);
     const button = html.match(/<button[^>]*>Continue with email<\/button>/)?.[0];
