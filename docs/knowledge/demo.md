@@ -33,6 +33,6 @@ The owner chooses the spending cap for each contact. [Original testnet roster](.
 
 **If asked about the owner’s signature**, show the approval on screen and then the resulting transfer. BscScan shows the agent’s transaction. LeashPay checked the owner’s approval on the server. [Recorded agent-server payment](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)
 
-**If asked about memory**, the team needs credits to test saving and finding a new preference. [Living Brain follow-up](../../ReadMe.md#live-terminal-checks)
+**If asked about memory**, open a plan for someone already paid: the **Living Brain** line says when they were last paid and how much, and **Checks & notes → Agent memory** lists what was connected and recalled. For the attack, plan the URGENT message a second time: memory flags the address as the target of the earlier attempt. `make test-brain` shows a new preference saved and found live. [Living Brain checks](../../ReadMe.md#live-terminal-checks)
 
 **Closing line:** “You can see what the agent asked for, what the vault allowed, and what Marco actually received.”

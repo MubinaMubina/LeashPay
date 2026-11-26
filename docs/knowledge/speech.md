@@ -29,6 +29,6 @@ The agency can hand payroll to an assistant and still decide where the money goe
 | **What if I run the same payment twice?** | “The vault remembers the payment reference for each recipient. A second attempt with the same reference is refused.” |
 | **Did Marco get pesos?** | “He received mUSDT. We use a market quote to show the estimated value in pesos. A bank payout would be a separate step.” |
 | **Who approved Marco’s payment?** | “In the app, the owner signs the plan and the agent sends the payment request. For the sponsored terminal rehearsal, we sent the request directly as the demo agent. The vault checked its rules in both cases.” |
-| **What can we verify today?** | “Here are the owner-approved payment, the sponsored payment, and the mock T-bill receipts. Living Brain’s write-and-recall test is waiting for project credits.” |
+| **What can we verify today?** | “Here are the owner-approved payment, the sponsored payment, and the mock T-bill receipts. And Living Brain: it saves each payout and attack, then connects them to the next plan.” |
 
 **Proof to keep open:** [Owner-approved payment](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc) · [Marco’s annotated sponsored receipt](02-wallets-and-transactions.md#marcos-receipt-annotated) · [T-bill receipts](../../contracts/README.md#t-bill-deposit-withdrawal-and-payment) · [Live demo cues](demo.md)

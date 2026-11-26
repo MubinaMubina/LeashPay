@@ -4,7 +4,7 @@ import { createApp } from "../src/app";
 import { Executor } from "../src/execution/executor";
 import { Journal } from "../src/execution/journal";
 import { BrainError, createBrainClient, type BrainClient, type BrainNote, type BrainSource } from "../src/memory/brain";
-import { createMemory, noteForRecipient, notesForAttack, notesForRun, ownerPrefix, rankOwnNotes } from "../src/memory/memory";
+import { createMemory, linkPayees, noteForRecipient, notesForAttack, notesForRun, ownerPrefix, rankOwnNotes } from "../src/memory/memory";
 import type { Plan } from "../src/plan/build";
 import { RecipientDirectory } from "../src/plan/directory";
 import type { PlannerInput } from "../src/plan/planner";
@@ -236,6 +236,43 @@ describe("what the agent saves", () => {
   });
 });
 
+describe("connecting a plan's payees to memory", () => {
+  const BAD = "0xbad5000000000000000000000000000000000bad" as const;
+  const prefix = ownerPrefix(OWNER);
+  const note = (kind: string, id: string, content: string, createdAt?: number): BrainSource => ({
+    id, originRef: `${prefix}${kind}:${id}`, label: id, content, affectedPageIds: [], ...(createdAt ? { createdAt } : {}),
+  });
+  const paid = (id: string, amount: string, day: string, createdAt: number) =>
+    note("paid", id, `LeashPay payout on ${day} UTC. Owner ${OWNER} paid Linh (${LINH}) ${amount} through vault ${VAULT}. Transaction ${id}. Plan ref 0xabc.`, createdAt);
+
+  it("puts an attack on the payee first, then the newest payout with a count", () => {
+    const sources = [
+      paid("0x01", "300 USDT", "2026-11-20", 1),
+      paid("0x02", "1 USDC", "2026-11-26", 2),
+      note("attack", "0x03", `LeashPay attack attempt on 2026-11-26 UTC. A payment to ${BAD} was sent from owner ${OWNER}'s vault ${VAULT} without the owner's signature. The vault refused it on-chain with RecipientNotAllowed.`),
+    ];
+    expect(linkPayees(OWNER, sources, [{ name: "Linh", address: LINH }, { name: "0xbad5", address: BAD }])).toEqual([
+      `Living Brain: ${BAD} was the target of an attack attempt on 2026-11-26, and the vault refused it. Treat this payment as suspicious.`,
+      "Living Brain: you last paid Linh 1 USDC on 2026-11-26 (2 payouts remembered).",
+    ]);
+  });
+
+  it("never links another owner's notes, the owner's own address, or a failed note", () => {
+    const other = { ...paid("0x01", "5 USDT", "2026-11-26", 1), originRef: `${ownerPrefix(OTHER)}paid:0x01` };
+    const failed = { ...paid("0x02", "5 USDT", "2026-11-26", 1), status: "failed" };
+    expect(linkPayees(OWNER, [other, failed], [{ name: "Linh", address: LINH }])).toEqual([]);
+    // Every payout note names the owner, but only as "Owner 0x…", never as the payee "(0x…)".
+    expect(linkPayees(OWNER, [paid("0x03", "5 USDT", "2026-11-26", 1)], [{ name: "me", address: OWNER }])).toEqual([]);
+  });
+
+  it("gives no links, and no error, while Living Brain is down", async () => {
+    const brain = fakeBrain();
+    brain.sources = async () => Promise.reject(new BrainError("Living Brain couldn't be reached."));
+    const memory = createMemory({ client: brain, log: () => {} });
+    await expect(memory.connect(OWNER, [{ name: "Linh", address: LINH }])).resolves.toEqual([]);
+  });
+});
+
 describe("plans with memory", () => {
   const draft: PlanDraft = {
     kind: "payment",
@@ -262,7 +299,19 @@ describe("plans with memory", () => {
     const t = app(fakeBrain([source(OWNER, "linh", text)]));
     const plan = (await (await t.post("/plans", { owner: OWNER, message: "Pay Linh 300" })).json()) as any;
     expect(t.planner.mock.calls[0]![0].memory).toEqual([text]);
-    expect(plan.memory).toEqual({ available: true, notes: [{ title: "linh", text }] });
+    const link = "Living Brain: you last paid Linh 300 USDT on 2026-11-01.";
+    expect(plan.memory).toEqual({ available: true, notes: [{ title: "linh", text }], links: [link] });
+    expect(plan.notes).toContain(link);
+    // The link is in the text the owner signs, so the wallet prompt shows it too.
+    const approval = (await (await t.api.request(`/plans/${plan.id}/approval`)).json()) as { message: string };
+    expect(approval.message).toContain(link);
+  });
+
+  it("adds no links when memory knows nothing about the payees", async () => {
+    const t = app(fakeBrain([source(OTHER, "x", `Owner ${OTHER} paid Linh (${LINH}) 9 USDT on 2026-11-01.`)]));
+    const plan = (await (await t.post("/plans", { owner: OWNER, message: "Pay Linh 300" })).json()) as any;
+    expect(plan.memory).toEqual({ available: true, notes: [] });
+    expect(plan.notes.some((n: string) => n.startsWith("Living Brain:"))).toBe(false);
   });
 
   it("still plans when memory is down", async () => {

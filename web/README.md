@@ -135,7 +135,7 @@ The web server resolves the wallet from the Privy session for `GET /api/history`
 
 ### Agent memory on the plan
 
-When the agent's memory is on, each plan card offers **Checks & notes → Recalled notes** with the agent’s memory details: the Living Brain notes the agent recalled for this message, "Nothing recalled for this message.", or why memory was unavailable. If saving new memories is failing (on 26 Nov: HTTP 402, the project's prepaid balance is empty), the box says so. How the agent uses memory is in the [agent README](../agent/README.md#memory-living-brain).
+When the agent's memory is on, each plan card shows a **Living Brain** line under the payments: the first thing memory connects to this plan ("you last paid Mateo 200 USDC on 2026-11-26", or an earlier attack on a payee's address), else how many notes it recalled. **Checks & notes → Agent memory** opens on its own when memory has something, with two lists: **Connected to this plan** and **Recalled before planning** (the notes Claude read), or "Nothing recalled for this message.", or why memory was unavailable. The connected lines are also plan notes, so the owner signs them. If saving new memories is failing (for example HTTP 402 when the prepaid balance is empty), the box says so. How the agent uses memory is in the [agent README](../agent/README.md#memory-living-brain).
 
 ### Local-currency amounts on the plan
 
