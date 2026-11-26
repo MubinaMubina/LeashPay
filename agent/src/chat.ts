@@ -21,7 +21,7 @@ const Add = z.strictObject({
   address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   country: TextSchema(60).optional(),
   currency: z.enum(["USD", "VND", "PHP", "THB"]).optional(),
-  monthlyCap: z.string().max(40).regex(/^\d(?:[\d., \u00a0\u2009\u202f]*\d)?$/).optional(),
+  monthlyCap: z.string().max(40).regex(/^(?:\d(?:[\d., \u00a0\u2009\u202f]*\d)?|[.,]\d+)$/).optional(),
 });
 const Clarify = z.strictObject({ question: TextSchema(240), candidates: z.array(TextSchema(60)).max(5).optional() });
 const Payment = z.strictObject({
@@ -64,6 +64,7 @@ function validated<S extends z.ZodType>(schema: S, value: unknown): z.output<S> 
 }
 
 function normalizedCap(value: string): string {
+  if (/^[.,]\d+$/.test(value)) return "0." + value.slice(1);
   if (/^\d{1,3}(?:[ \u00a0\u2009\u202f]\d{3})+(?:[.,]\d+)?$/.test(value)) {
     return value.replace(/[ \u00a0\u2009\u202f]/g, "").replace(",", ".");
   }
@@ -74,12 +75,12 @@ function normalizedCap(value: string): string {
 function suppliedCap(value: string, message: string): string | undefined {
   const proposed = normalizedCap(value);
   // Consume the entire numeral before comparing. A single group in "2 500" cannot become a cap.
-  const amounts = /[+-]?\d+(?:(?:[.,]|[ \u00a0\u2009\u202f]+)\d+)*/gu;
+  const amounts = /([+-]?(?:\d+(?:(?:[.,]|[ \u00a0\u2009\u202f]+)\d+)*|[.,]\d+))(?:USDT|USDC)?/giu;
   for (const match of message.matchAll(amounts)) {
     const before = message[match.index - 1] ?? "";
     const after = message[match.index + match[0].length] ?? "";
     if (/[\p{L}\p{N}]/u.test(before + after) || before === "." || before === ",") continue;
-    if (normalizedCap(match[0]) === proposed) return proposed;
+    if (normalizedCap(match[1]!) === proposed) return proposed;
   }
   return undefined;
 }
@@ -162,15 +163,12 @@ export async function selectChatCard(client: Anthropic, model: string, input: Ch
         throw new PlannerError("Claude selected an unavailable payment turn. Try again.");
       }
       let prior = contextStart === null ? [] : input.context.slice(contextStart);
-      if (input.context.length && contextStart === null) {
-        // A bare name still belongs to the draft. Never drop its amount or reuse a superseded request.
-        if (exactPayee(input.message, input.recipientNames)) {
-          const origin = input.context.findLastIndex(turn => /\b(pay|send|transfer|paie|paye|payer|envoie|envoyer|verse|vire)\b/i.test(turn));
-          if (origin < 0) return { kind: "clarify", question: "Please restate the payment with the full recipient name and amount." };
-          prior = input.context.slice(origin);
-        } else if (input.context.some(vagueSelection) && /^[$€]?\s*[\d., ]+(?:\s*[A-Z]{3,4})?$/i.test(input.message)) {
-          return FULL_NAME;
-        }
+      const amountOnly = /^[$€]?\s*\d[\d.,\s]*(?:USDT|USDC|USD|THB|VND|PHP)?[.!]?$/i.test(input.message.trim());
+      if (contextStart === null && (amountOnly || exactPayee(input.message, input.recipientNames))) {
+        // A bare amount or payee cannot start a complete payment. Recover the latest request only.
+        const origin = input.context.findLastIndex(turn => /\b(pay|send|transfer|paie|paye|payer|envoie|envoyer|verse|vire)\b/i.test(turn));
+        if (origin < 0) return { kind: "clarify", question: "Please restate the payment with the full recipient name and amount." };
+        prior = input.context.slice(origin);
       }
       const lastVague = prior.findLastIndex(vagueSelection);
       if (lastVague !== -1 && ![...prior.slice(lastVague + 1), input.message].some(turn => exactPayee(turn, input.recipientNames))) {

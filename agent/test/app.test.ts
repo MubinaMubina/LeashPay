@@ -430,6 +430,20 @@ describe("who can reach the agent", () => {
 });
 
 describe("the recipient directory", () => {
+  it("updates reviewed contact details once and keeps newer edits and token preferences", async () => {
+    const api = app();
+    const contact = { owner: OWNER, name: "Marco", address: MARCO };
+    await api.request("/directory", json({ ...contact, country: "PH", currency: "PHP", preferredToken: "USDC" }));
+    const update = { ...contact, country: "TH", currency: "THB", expectedDetails: { country: "PH", currency: "PHP" } };
+    expect((await api.request("/directory", json(update))).status).toBe(201);
+    expect((await api.request("/directory", json(update))).status).toBe(200);
+    expect((await api.request("/directory", json({ ...update, currency: "VND" }))).status).toBe(409);
+    expect((await api.request("/directory", json({ ...update, name: "Other" }))).status).toBe(409);
+    expect((await api.request("/directory", json({ ...update, address: ATTACKER }))).status).toBe(409);
+    const result = await (await api.request(`/directory?owner=${OWNER}`)).json();
+    expect(result).toContainEqual({ name: "Marco", address: MARCO, country: "TH", currency: "THB", preferredToken: "USDC" });
+  });
+
   it("makes create-only saves idempotent and keeps a competing save from renaming an address", async () => {
     const api = app();
     const save = (name: string) => api.request("/directory", json({ owner: OWNER, address: MARCO, name, createOnly: true }));

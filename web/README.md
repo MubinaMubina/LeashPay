@@ -83,7 +83,8 @@ Closing a wallet popup halfway is fine: "Finish setup" continues. The demo attac
 The vault column lists the owner's recipients from the agent's directory, each with the vault's own view of it (`recipientInfo`): the monthly cap, or "not in vault" when the vault would refuse a payment. "+ Add recipient" opens a form: name, wallet address, country, currency (VND, PHP, THB or USD) and monthly cap.
 - **Two writes, vault first:** the owner's wallet sends `setRecipient(address, true, monthlyCap)`, then the app saves the name to the agent's directory. The agent's key can't do the first write, which is why "send all funds to 0xBAD…" is refused.
 - **Interrupted adds:** if the wallet popup is closed or the agent is down between the two writes, submitting the same recipient again finishes it.
-- **Refused before any popup** ([`lib/recipients.ts`](lib/recipients.ts)): a name already used (whatever the case), an address already allowed, the zero address, the demo attack address, the vault, the agent and the owner's own wallet, and a cap that is zero, not a plain number or above 1,000,000,000.
+- If the vault already allows the address at the requested cap, the form can save the name or update the reviewed country and currency directly. It checks for competing directory edits before saving.
+- The form rejects conflicting name/address pairs, reserved addresses and invalid caps before opening a wallet prompt. The chat leaves the cap blank when it cannot read the requested amount. [Recipient validation](lib/recipients.ts)
 - **Right after adding**, the owner can type "Pay Ramon 1": the agent reads the directory for each plan.
 - **Not built:** removing a recipient or changing a cap from the app. The recipient page shows local value only for the demo recipients; for a new recipient it shows the coin amounts.
 

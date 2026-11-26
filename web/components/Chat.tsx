@@ -61,6 +61,16 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
     void api<{ plan: PlanJson; events: JournalEventJson[] }>(`plans/${encodeURIComponent(id)}?owner=${owner}`)
       .then((found) => {
         if (ignore) return;
+        if (found.status === 403 || found.status === 404) {
+          const url = new URL(window.location.href);
+          if (url.searchParams.get("plan") === id) {
+            url.searchParams.delete("plan");
+            window.history.replaceState(null, "", url);
+          }
+          initialPlan.current = null;
+          setRestoreFailed(false);
+          return;
+        }
         setRestoreFailed(!found.ok);
         if (found.ok) setRestored(found.body);
       }).catch(() => { if (!ignore) setRestoreFailed(true); });

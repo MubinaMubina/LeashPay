@@ -72,6 +72,15 @@ describe("chat tool selection", () => {
       .resolves.toEqual({ kind: "add", fields: {} });
   });
 
+  it.each([["10USDT", "10"], [".5 USDT", "0.5"], [",5USDC", "0.5"]])("recognizes the full cap in %s", async (raw, cap) => {
+    await expect(choose(`Add Léa with a ${raw} cap`, "add", { monthlyCap: cap }))
+      .resolves.toEqual({ kind: "add", fields: { monthlyCap: cap } });
+  });
+  it("does not extract caps from identifiers with a token prefix", async () => {
+    await expect(choose("Add Léa10USDT or 10USDTaccount", "add", { monthlyCap: "10" }))
+      .resolves.toEqual({ kind: "add", fields: {} });
+  });
+
   it("makes one SDK attempt when the network is unavailable", async () => {
     const fetch = vi.fn(async () => { throw new TypeError("Network unavailable"); });
     const client = new Anthropic({ apiKey: "fixture", fetch });
@@ -88,6 +97,12 @@ describe("chat tool selection", () => {
   });
 
   const candidates = ["Alex Martin", "Alex Lee"];
+  it("retains the latest payment request when a standalone amount is classified as a fresh plan", async () => {
+    await expect(choose("25 USDT", "payment", { contextStart: null }, ["Pay Linh", "Paie Léa"]))
+      .resolves.toEqual({ kind: "payment", message: "Paie Léa\n25 USDT" });
+    await expect(choose("25 USDT", "payment", { contextStart: null }))
+      .resolves.toMatchObject({ kind: "clarify" });
+  });
   it("asks for an explicit full name and only lists candidates from the owner's directory", async () => {
     const message = "Pay Alex 75 USDT";
     const args = { question: "First or second?", candidates: [...candidates, "Invented Name"] };

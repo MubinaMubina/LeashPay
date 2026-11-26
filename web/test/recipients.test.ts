@@ -44,6 +44,9 @@ describe("reviewing and saving a recipient", () => {
         if (address !== RAMON) throw new Error("Unexpected wallet address");
         if (state.reverted) throw new Error("The transaction failed on-chain");
         state.vault = { allowed: true, monthlyCap, spentThisMonth: 0n };
+        for (const entry of state.directory ?? []) {
+          if (entry.address === address) entry.onChain = state.vault;
+        }
       },
       saveName: async ({ name, address, country, currency }: NewRecipient) => {
         state.nameWrites++;
@@ -85,6 +88,18 @@ describe("reviewing and saving a recipient", () => {
     const changed = await saveReviewedRecipient(reviewed, inspect, writes);
     expect(changed).toMatchObject({ kind: "changed", review: { action: "authorize", currentCap: 200n * 10n ** 18n } });
     expect([state.signatures, state.nameWrites]).toEqual([0, 0]);
+  });
+
+  it("saves edited details when reauthorizing a known recipient and retries without another signature", async () => {
+    const { state, inspect, writes } = setup();
+    state.directory = [{ name: "Ramon", address: RAMON, country: "TH", currency: "THB", onChain: state.vault }];
+    state.saveFails = true;
+    const result = await saveReviewedRecipient(await inspect(), inspect, writes);
+    expect(result.kind).toBe("retry-name");
+    state.saveFails = false;
+    expect((await saveReviewedRecipient(await inspect(), inspect, writes)).kind).toBe("added");
+    expect(state.signatures).toBe(1);
+    expect(state.directory[0]).toMatchObject({ country: "PH", currency: "PHP" });
   });
 
   it("never signs when the recipient directory or target vault entry is unreadable", async () => {
@@ -129,7 +144,7 @@ describe("reviewing and saving a recipient", () => {
     const { state, inspect, writes } = setup();
     const reviewed = await inspect();
     state.vault = { allowed: true, monthlyCap: parseUnits("1000", 18), spentThisMonth: 0n };
-    state.directory = [{ name: "Ramon", address: RAMON, onChain: state.vault }];
+    state.directory = [{ name: "Ramon", address: RAMON, country: "PH", currency: "PHP", onChain: state.vault }];
     expect((await saveReviewedRecipient(reviewed, inspect, writes)).kind).toBe("added");
     expect([state.signatures, state.nameWrites]).toEqual([0, 0]);
   });

@@ -94,7 +94,7 @@ export function checkNewRecipient(form: RecipientForm, existing: ListedRecipient
 
 export interface RecipientReview {
   recipient: NewRecipient;
-  alreadyNamed: boolean;
+  storedDetails?: Pick<ListedRecipient, "country" | "currency">;
   allowed: boolean;
   currentCap: bigint;
   action: "authorize" | "save-name" | "done";
@@ -117,12 +117,13 @@ export async function reviewRecipient(form: RecipientForm, reserved: Reserved, r
   if (!authorization) throw new Error("Couldn't verify this address in your vault. Try again.");
   const { allowed, monthlyCap } = authorization;
   const needsWallet = !allowed || monthlyCap !== recipient.monthlyCap;
+  const detailsMatch = entry && entry.country === recipient.country && entry.currency === recipient.currency;
   return {
     recipient,
-    alreadyNamed: Boolean(entry),
+    storedDetails: entry && { country: entry.country, currency: entry.currency },
     allowed,
     currentCap: monthlyCap,
-    action: needsWallet ? "authorize" : entry ? "done" : "save-name",
+    action: needsWallet ? "authorize" : detailsMatch ? "done" : "save-name",
   };
 }
 
@@ -134,7 +135,14 @@ type SaveOutcome =
 interface RecipientWrites {
   /** Resolves only after a successful receipt. */
   authorize: (recipient: NewRecipient) => Promise<void>;
-  saveName: (recipient: NewRecipient) => Promise<void>;
+  saveName: (recipient: NewRecipient, stored: RecipientReview["storedDetails"]) => Promise<void>;
+}
+
+function sameStoredDetails(a: RecipientReview, b: RecipientReview) {
+  const left = a.storedDetails;
+  const right = b.storedDetails;
+  if (!left || !right) return left === right;
+  return left.country === right.country && left.currency === right.currency;
 }
 
 /** A signature always applies to the state the owner reviewed. A name-only retry stays name-only. */
@@ -146,21 +154,23 @@ export async function saveReviewedRecipient(
   const fresh = await inspect();
   if (fresh.action === "done") return { kind: "added" };
   if (fresh.action !== reviewed.action || fresh.currentCap !== reviewed.currentCap ||
-      fresh.allowed !== reviewed.allowed || fresh.alreadyNamed !== reviewed.alreadyNamed) {
+      fresh.allowed !== reviewed.allowed || !sameStoredDetails(fresh, reviewed)) {
     return { kind: "changed", review: fresh };
   }
   const { recipient } = fresh;
   const needsWallet = fresh.action === "authorize";
   if (needsWallet) await writes.authorize(recipient);
-  const authorized: RecipientReview = { ...fresh, allowed: true, currentCap: recipient.monthlyCap, action: fresh.alreadyNamed ? "done" : "save-name" };
+  const authorized: RecipientReview = { ...fresh, allowed: true, currentCap: recipient.monthlyCap, action: "save-name" };
   try {
     if (needsWallet) {
       // The wallet may have been open long enough for another tab to change the directory.
       const afterReceipt = await inspect();
       if (afterReceipt.action === "done") return { kind: "added" };
-      if (afterReceipt.action !== "save-name") return { kind: "changed", review: afterReceipt };
+      if (afterReceipt.action !== "save-name" || !sameStoredDetails(afterReceipt, fresh)) {
+        return { kind: "changed", review: afterReceipt };
+      }
     }
-    await writes.saveName(recipient);
+    await writes.saveName(recipient, fresh.storedDetails);
     return { kind: "added" };
   } catch (cause) {
     return { kind: "retry-name", review: authorized, error: cause instanceof Error ? cause.message : String(cause) };

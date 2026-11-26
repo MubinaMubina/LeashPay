@@ -102,7 +102,11 @@ const CreatePlanBody = z.object({
   depegThreshold: z.number().min(0).max(100).optional(),
 });
 
-const DirectoryBody = RecipientEntrySchema.extend({ owner: AddressSchema, createOnly: z.boolean().optional() });
+const DirectoryBody = RecipientEntrySchema.extend({
+  owner: AddressSchema,
+  createOnly: z.boolean().optional(),
+  expectedDetails: RecipientEntrySchema.pick({ country: true, currency: true }).strict().optional(),
+});
 
 /** The owner's signed approval, from GET /plans/:id/approval and the owner's wallet. */
 const ExecuteBody = z.object({
@@ -199,14 +203,22 @@ export function createApp(deps: AppDeps) {
   });
 
   app.post("/directory", async (c) => {
-    const { owner, createOnly, ...entry } = input(DirectoryBody, await readJson(c));
+    const { owner, createOnly, expectedDetails, ...entry } = input(DirectoryBody, await readJson(c));
     // The server holds a process lock on its data directory. Keep this check and upsert synchronous.
-    if (createOnly) {
+    if (createOnly || expectedDetails) {
       const entries = deps.directory.list(owner);
       const current = entries.find((recipient) => recipient.address === entry.address);
       if (current) {
-        if (current.name.toLowerCase() === entry.name.toLowerCase()) return c.json(entries);
-        throw new DirectoryRuleError(`This address was already saved as ${current.name}. Review the recipients list.`);
+        if (current.name.toLowerCase() !== entry.name.toLowerCase()) {
+          throw new DirectoryRuleError(`This address was already saved as ${current.name}. Review the recipients list.`);
+        }
+        if (current.country === entry.country && current.currency === entry.currency) return c.json(entries);
+        if (!expectedDetails || current.country !== expectedDetails.country || current.currency !== expectedDetails.currency) {
+          throw new DirectoryRuleError("Contact details changed. Review the current details before saving.");
+        }
+        entry.preferredToken = current.preferredToken;
+      } else if (expectedDetails) {
+        throw new DirectoryRuleError("This contact is no longer in your directory. Review it again.");
       }
     }
     const saved = deps.directory.upsert(owner, entry);

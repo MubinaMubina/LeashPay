@@ -45,7 +45,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
     address: initial?.address ?? EMPTY.address,
     country: initial?.country ?? EMPTY.country,
     currency: initial?.currency ?? EMPTY.currency,
-    monthlyCap: initial?.monthlyCap ?? EMPTY.monthlyCap,
+    monthlyCap: initial ? initial.monthlyCap ?? "" : EMPTY.monthlyCap,
   }));
   const [review, setReview] = useState<RecipientReview | null>(null);
   const [retryName, setRetryName] = useState(false);
@@ -87,10 +87,11 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
             abi: leashVaultAbi, functionName: "setRecipient", args: [recipient.address, true, recipient.monthlyCap],
           }));
         },
-        saveName: async ({ name, address, country, currency }) => {
+        saveName: async ({ name, address, country, currency }, expectedDetails) => {
           ensureOpen();
-          setBusy("Saving the name…");
-          const saved = await api("directory", { body: { name, address, country, currency, owner, createOnly: true } });
+          setBusy("Saving contact details…");
+          const guard = expectedDetails ? { expectedDetails } : { createOnly: true };
+          const saved = await api("directory", { body: { name, address, country, currency, owner, ...guard } });
           if (!saved.ok) throw new Error(saved.body.error ?? `The agent answered ${saved.status}.`);
         },
       }));
@@ -102,7 +103,7 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
         setReview(result.review);
         setRetryName(result.kind === "retry-name");
         setError(result.kind === "retry-name"
-          ? `Your vault authorization was confirmed. Saving the name needs another check. ${result.error}`
+          ? `Your vault authorization was confirmed. Saving the contact details needs another check. ${result.error}`
           : "The vault or directory changed. Review the current details before continuing.");
       }
     } catch (err) {
@@ -127,8 +128,8 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
     setError(null);
   }
 
-  const submitLabel = !review ? "Review recipient" : retryName ? "Retry saving name" : {
-    authorize: "Confirm in wallet", "save-name": "Save name", done: "Done",
+  const submitLabel = !review ? "Review recipient" : retryName ? (review.storedDetails ? "Retry saving details" : "Retry saving name") : {
+    authorize: "Confirm in wallet", "save-name": review.storedDetails ? "Save contact details" : "Save name", done: "Done",
   }[review.action];
 
   return (
@@ -138,12 +139,16 @@ export function AddRecipientForm({ vault, agent, book, initial, onCancel, onAdde
           <strong>{review.recipient.name}</strong>
           <p style={{ overflowWrap: "anywhere" }}>{review.recipient.address}</p>
           <p>{formatUnits(review.recipient.monthlyCap, 18)} USDT or USDC per 30 days</p>
+          <p>Local currency: {review.recipient.currency}{review.recipient.country && ` · ${review.recipient.country}`}</p>
+          {review.storedDetails && (review.storedDetails.currency !== review.recipient.currency || review.storedDetails.country !== review.recipient.country) && (
+            <p className="sub">Currently saved: {review.storedDetails.currency ?? "No local currency"} · {review.storedDetails.country ?? "No country"}.</p>
+          )}
           {review.action === "authorize" && <p className="sub">
             {review.allowed
               ? `The current cap is ${formatUnits(review.currentCap, 18)}. Your wallet will sign the cap change.`
               : "Your wallet will sign to allow payments to this address."}
           </p>}
-          {review.action === "save-name" && <p className="sub">Your vault already allows this address at this cap. Save the name to your directory.</p>}
+          {review.action === "save-name" && <p className="sub">Your vault already allows this address at this cap. Only the directory needs updating.</p>}
           {review.action === "done" && <p className="sub">This name and address are already in your directory with this vault cap.</p>}
         </div>
       ) : (
