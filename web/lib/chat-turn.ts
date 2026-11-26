@@ -9,6 +9,7 @@ type ToolCard =
   | { kind: "clarify"; question: string };
 type Decision = ToolCard | { kind: "payment"; message: string };
 export type ChatEntry = ToolCard
+  | { kind: "access" }
   | { kind: "owner"; text: string }
   | { kind: "plan"; plan: PlanJson; events: JournalEventJson[] }
   | { kind: "notice"; title: string }
@@ -16,9 +17,11 @@ export type ChatEntry = ToolCard
 
 /** The classifier can open cards or prepare a plan. Wallet approvals live in the cards. */
 export async function requestChatTurn(
-  api: ReturnType<typeof useApi>, owner: Address, message: string, context: string[],
+  api: ReturnType<typeof useApi>, activeOwner: Address | null, message: string, context: string[],
   depegThreshold: number, isCurrent: () => boolean,
 ): Promise<{ entry: ChatEntry; context: string[] } | null> {
+  if (!activeOwner) return { entry: { kind: "access" }, context: [] };
+  const owner = activeOwner;
   const decision = await api<Decision>("chat", { body: { owner, message, context } });
   if (!isCurrent()) return null;
   const failure = (status: number, error?: string, remaining = context) => ({

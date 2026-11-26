@@ -6,6 +6,13 @@ const ok = (body: unknown) => ({ ok: true, status: 200, body });
 const active = () => true;
 
 describe("the owner's chat", () => {
+  it("answers locally and forgets the request when the account has no active vault", async () => {
+    const api = vi.fn();
+    expect(await requestChatTurn(api, null, "Pay Léa 25 USDT", ["an earlier request"], 5, active))
+      .toEqual({ entry: { kind: "access" }, context: [] });
+    expect(api).not.toHaveBeenCalled();
+  });
+
   it("keeps pending user turns for a clarification and clears them on a new read", async () => {
     const api = vi.fn().mockResolvedValueOnce(ok({ kind: "clarify", question: "How much?" }))
       .mockResolvedValueOnce(ok({ kind: "balance" }));

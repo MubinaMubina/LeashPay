@@ -25,7 +25,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm run dev
    ```
 4. Open http://localhost:3000 and log in with your email.
-5. The account opens immediately. Try **Add money** or **Withdraw** to preview future funding methods. For on-chain payments, choose **Enable payments** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
+5. Visitors and signed-in owners share **Payment chat**, **Recipients**, and **Your vault**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
 
@@ -73,9 +73,11 @@ Type a request in English or French, or choose an action on the help card. “Ho
 
 Opening an account only looks up the wallet’s existing vault. A new account can open with zero tBNB, zero stablecoins and no recipients. Existing vaults open the payment dashboard at any balance. A failed lookup offers a retry and leaves balances marked unavailable. [Account logic](lib/onboarding.ts)
 
-**Enable payments** is optional. The owner confirms one transaction to create a vault and pays its testnet network fee in tBNB. The app never mints test funds or adds contacts during signup or activation. For a rehearsal, use a funded test vault and the [demo wallet list](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet).
+**Activate vault** is optional. The owner confirms one transaction to create a vault and pays its testnet network fee in tBNB. The app never mints test funds or adds contacts during signup or activation. For a rehearsal, use a funded test vault and the [demo wallet list](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet).
 
-**Add money** previews funding by bank transfer or Apple Pay. **Withdraw** previews a transfer to a bank account. Both are available before and after vault activation. The final actions are disabled and do not request payment details, call a provider or change balances.
+In **Your vault**, **Add money** and **Withdraw** preview a bank transfer in either direction. The amount stays in the browser. Both previews are available before login and after activation. The final buttons are disabled.
+
+A visitor can type in the chat and explore the recipient directory. Sending a message or trying to add a contact shows a login prompt. A signed-in owner without a vault sees an activation prompt instead. Requests made while browsing never run automatically after login or activation.
 
 ### Adding a recipient
 

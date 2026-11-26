@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "./Skeleton";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { encodeFunctionData, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
@@ -18,7 +18,7 @@ type Phase =
   | { kind: "added" | "removed"; name: string }
   | { kind: "remove"; recipient: DirectoryEntry; stage: "review" | "checking" | "wallet" | "directory"; error?: string };
 
-export function Recipients({ vault, agent, book, listRequest }: { vault: Address; agent: Address | null | undefined; book: RecipientBook; listRequest: number }) {
+export function Recipients({ vault, agent, book, listRequest, accessNotice }: { vault: Address | null; accessNotice: ReactNode; agent: Address | null | undefined; book: RecipientBook; listRequest: number }) {
   const api = useApi();
   const sendAndWait = useSendAndWait();
   const owner = useOwnerWallet();
@@ -62,6 +62,7 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
   const [attempt, setAttempt] = useState(0);
   const { readDirectory, revision } = book;
   useEffect(() => {
+    if (!vault) return;
     let current = true;
     void readDirectory().then(entries => {
       if (current) { setList(entries); setLoadError(null); }
@@ -69,7 +70,7 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
       if (current) { setList(null); setLoadError(errorText(err)); }
     });
     return () => { current = false; };
-  }, [readDirectory, revision, attempt]);
+  }, [readDirectory, revision, attempt, vault]);
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (list ?? []).filter((entry) => entry.name.toLowerCase().includes(needle));
@@ -80,7 +81,7 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
 
   useEffect(() => {
     scrollArea.current?.scrollTo({ top: 0 });
-    if (!showList || !visible.length) return;
+    if (!vault || !showList || !visible.length) return;
     let cancelled = false;
     setChecks(new Map());
     // Coalesce keystrokes before contacting the vault. Names render immediately.
@@ -93,7 +94,7 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
   }, [visible, vault, showList]);
 
   const remove = async (recipient: DirectoryEntry) => {
-    if (mutationLock.current) return;
+    if (!vault || mutationLock.current) return;
     if (!owner) {
       setPhase({ kind: "remove", recipient, stage: "review", error: "Your wallet isn't ready yet." });
       return;
@@ -151,11 +152,12 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
           {loadError && <p role="alert" className="error-card">{loadError} <button className="link" onClick={() => setAttempt(n => n + 1)}>Retry</button></p>}
           {phase.kind === "added" && <p role="status" className="added">{phase.name} added to your recipients.</p>}
           {phase.kind === "removed" && <p role="status" className="added">{phase.name} removed from your recipients.</p>}
-          {(visible.length > 0 || (list === null && !loadError)) && <div className="directory-columns">
+          {vault && (visible.length > 0 || (list === null && !loadError)) && <div className="directory-columns">
             <span>Name</span><span>Monthly cap</span><span className="sr-only">Actions</span>
           </div>}
           <div className="directory-list" ref={scrollArea}>
-            {list === null && !loadError && <Skeleton variant="recipients" label="Loading recipients" />}
+            {!vault && <p className="hint">Your recipients will appear here.</p>}
+            {vault && list === null && !loadError && <Skeleton variant="recipients" label="Loading recipients" />}
             {list !== null && !matches.length && <p className="hint">{list.length ? "No matching recipients." : "No recipients yet."}</p>}
             <ul aria-label="Recipient directory">
               {visible.map((r) => {
@@ -203,7 +205,7 @@ export function Recipients({ vault, agent, book, listRequest }: { vault: Address
               phase.stage === "directory" ? "Removing…" : phase.error ? "Retry deletion" : "Delete recipient"}
           </button>
         </div>
-      ) : (
+      ) : !vault ? <div className="directory-access">{accessNotice}</div> : (
         <AddRecipientForm vault={vault} agent={agent} book={book} onBusyChange={setAdding} onCancel={backToList}
           onAdded={(name) => setPhase({ kind: "added", name })} />
       )}

@@ -57,7 +57,7 @@ code {
   border-bottom: 1px solid var(--line);
   background: var(--panel);
 }
-.brand, .account, .agent-name, .vault-title, .spent-line, .vault-trigger {
+.brand, .account, .agent-name, .vault-title, .spent-line {
   display: flex;
   align-items: center;
 }
@@ -144,33 +144,47 @@ button, input, select { font-family: inherit; }
   padding: 0 24px;
 }
 
-.account-home {
-  max-width: 1080px;
-  margin-inline: auto;
-  padding: clamp(24px, 5vw, 64px) var(--gutter);
-}
-.account-home h1 { margin: 0 0 22px; font-size: clamp(28px, 4vw, 38px); letter-spacing: -.045em; }
-.account-grid { display: grid; grid-template-columns: 1.25fr 1fr; align-items: start; gap: 20px; }
-.account-grid > section { min-width: 0; }
-.account-grid h2 { margin: 0 0 16px; font-size: 20px; letter-spacing: -.035em; }
-.account-payments p { margin: 12px 0; color: var(--ink-2); }
-.account-payments p:last-child { margin-bottom: 0; }
-.account-payments .activation-message { padding: 10px 14px; border-left: 3px solid var(--line); }
-.money-actions { margin: 16px 0; }
-.account-balance .money-actions { margin-bottom: 0; }
-.money-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
-.money-buttons .btn { flex: 1; min-height: 44px; }
-.money-secondary { color: var(--ink); background: var(--panel); border-color: var(--line); }
-.money-preview { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
-.money-preview h3 { margin: 0; font-size: 16px; }
-.money-preview p { margin: 6px 0 12px; color: var(--ink-2); }
-.money-preview p:last-child { margin-bottom: 0; }
-.money-preview label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
-.money-preview select { min-height: 44px; padding: 8px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
-.money-preview .btn { white-space: normal; }
-@media (max-width: 680px) {
-  .account-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-}
+.header-login { padding: 7px 14px; }
+.transfer-panel { overflow-y: auto; padding: clamp(16px, 2.5vw, 32px) var(--panel-pad); gap: 16px; }
+.mobile-overview { border-bottom: 1px solid var(--line); }
+.mobile-overview > summary { display: flex; align-items: center; gap: 10px; padding: 6px 0 12px; font-weight: 600; min-height: 44px; }
+.mobile-overview > summary::-webkit-details-marker { display: none; }
+.mobile-overview > summary::after { content: ""; width: 7px; height: 7px; margin-right: 3px; border-right: 1.5px solid; border-bottom: 1.5px solid; transform: rotate(45deg); }
+.mobile-overview[open] > summary::after { transform: rotate(225deg); }
+.mobile-overview .status { margin: 0 0 0 auto; font-size: 12px; }
+.mobile-overview .vault-scroll { padding: 0; }
+.mobile-overview .kill-area { padding-inline: 0; }
+.transfer-panel h1 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -.05em; line-height: 1.15; }
+.transfer-card, .access-notice { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.transfer-card { width: 100%; max-width: 640px; padding: clamp(16px, 2.6vw, 28px); }
+.transfer-heading, .transfer-value { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.transfer-heading h2 { margin: 0; font-size: 20px; letter-spacing: -.035em; }
+.transfer-status { flex: none; border-radius: 100px; background: #f2f2ed; padding: 4px 10px; color: var(--ink-2); font-size: 12px; }
+.transfer-options { margin: 16px 0 20px; display: flex; gap: 3px; border: 1px solid var(--line); border-radius: 10px; padding: 3px; background: var(--bg); }
+.transfer-options button { flex: 1; min-height: 42px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-2); font-size: 14px; font-weight: 600; cursor: pointer; }
+.transfer-options button[aria-pressed="true"] { background: var(--ink); color: white; }
+.transfer-options button span { margin-right: 5px; }
+.transfer-amount label, .transfer-route dt { color: var(--ink-3); font-size: 13px; }
+.transfer-value { margin-top: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.transfer-value:focus-within { border-color: var(--ink); }
+.transfer-value input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--ink); font-size: clamp(32px, 4vw, 48px); line-height: 1.2; letter-spacing: -.045em; font-weight: 600; }
+.transfer-value input::placeholder { color: #7b7e74; opacity: 1; }
+.transfer-value span { font-weight: 650; font-size: 16px; }
+.transfer-route { margin: 16px 0; }
+.transfer-route > div { position: relative; display: grid; grid-template-columns: 45px 1fr; gap: 8px; align-items: baseline; padding: 7px 0 7px 24px; }
+.transfer-route > div::before { content: ""; position: absolute; top: 50%; left: 3px; width: 8px; height: 8px; transform: translateY(-50%); background: var(--panel); border: 1.5px solid var(--ink-3); border-radius: 50%; z-index: 1; }
+.transfer-route > div:first-child::after { content: ""; position: absolute; left: 7px; top: 50%; height: 100%; border-left: 1px solid var(--line); }
+.transfer-route > div:last-child::before { background: var(--ink); border-color: var(--ink); }
+.transfer-route dd { margin: 0; font-weight: 600; }
+.transfer-footer { border-top: 1px solid var(--line); padding-top: 16px; }
+.transfer-footer button { width: 100%; min-height: 42px; }
+.transfer-footer p { margin: 8px 0 0; text-align: center; color: var(--ink-3); font-size: 12px; }
+.access-notice { max-width: 640px; padding: 16px 18px; }
+.access-notice h3 { margin: 0 0 4px; font-size: 16px; letter-spacing: -.025em; }
+.access-notice p { margin: 0; color: var(--ink-2); }
+.access-notice button { margin-top: 12px; }
+.access-notice .kill-error { margin-top: 10px; color: var(--stop); }
+.directory-access { margin: 0 var(--panel-pad) 16px; }
 .small {
   font-size: 13px;
   margin-top: 10px;
@@ -206,7 +220,7 @@ button, input, select { font-family: inherit; }
   background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
 }
 .vault-scroll { min-height: 0; overflow: auto; padding: 20px 22px 4px; }
-.vault-title, .spent-line, .vault-trigger { justify-content: space-between; gap: 12px; }
+.vault-title, .spent-line { justify-content: space-between; gap: 12px; }
 .vault-title h2 { margin: 0; font-size: 23px; letter-spacing: -.04em; }
 .balances { border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px; }
 .balances .kv { padding-block: 8px; }
@@ -814,12 +828,6 @@ summary { cursor: pointer; }
   .directory-footer button { min-height: 44px; }
   .remove-confirm { width: 100%; }
 
-  .vault-trigger { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 14px; min-height: 44px; flex: none; cursor: pointer; }
-  .vault-sheet { position: fixed; inset: auto 0 0; margin: 0 auto; padding: 0; width: min(100%, 560px); max-width: 100%; max-height: 85dvh; border: 0; border-radius: 18px 18px 0 0; }
-  .vault-sheet::backdrop { background: rgb(20 21 18 / 40%); }
-  .vault-sheet .vault-col { max-height: 85dvh; border: 0; border-radius: inherit; }
-  .vault-sheet .kill-area { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-  .sheet-close { min-height: 44px; }
   .log { gap: 14px; padding: 12px var(--panel-pad); }
   .plan, .skeleton-plan { margin-left: 0; }
   .plan { padding: 14px 16px; }

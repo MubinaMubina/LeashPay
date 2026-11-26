@@ -3,34 +3,44 @@
 import { useId, useState } from "react";
 
 export function MoneyActions() {
-  const [action, setAction] = useState<"add" | "withdraw" | null>(null);
-  const [method, setMethod] = useState<"bank" | "apple">("bank");
-  const preview = useId();
+  const [direction, setDirection] = useState<"deposit" | "withdraw">("deposit");
+  const [amount, setAmount] = useState("");
+  const deposit = direction === "deposit";
+  const id = useId();
+  const bank = "Your bank account";
+  const vault = "LeashPay vault";
 
-  return (
-    <section className="money-actions" aria-label="Deposits and withdrawals">
-      <div className="money-buttons">
-        <button type="button" className={action === "withdraw" ? "btn money-secondary" : "btn"} aria-expanded={action === "add"} aria-controls={preview}
-          onClick={() => setAction(action === "add" ? null : "add")}>Add money</button>
-        <button type="button" className={action === "withdraw" ? "btn" : "btn money-secondary"} aria-expanded={action === "withdraw"} aria-controls={preview}
-          onClick={() => setAction(action === "withdraw" ? null : "withdraw")}>Withdraw</button>
+  return <section className="transfer-card" aria-label="Bank transfer preview">
+    <header className="transfer-heading">
+      <h2>Bank transfer</h2>
+      <span className="transfer-status">Coming soon</span>
+    </header>
+    <div className="transfer-options" role="group" aria-label="Transfer direction">
+      <button type="button" aria-pressed={deposit} onClick={() => setDirection("deposit")}>
+        <span aria-hidden="true">↙</span> Add money
+      </button>
+      <button type="button" aria-pressed={!deposit} onClick={() => setDirection("withdraw")}>
+        <span aria-hidden="true">↗</span> Withdraw
+      </button>
+    </div>
+    <div className="transfer-amount">
+      <label htmlFor={id}>Preview amount<span className="sr-only"> in USD</span></label>
+      <div className="transfer-value">
+        <input id={id} type="text" inputMode="decimal" autoComplete="off" placeholder="0.00" value={amount}
+          onChange={event => {
+            const next = event.target.value.replace(",", ".");
+            if (/^\d{0,9}(\.\d{0,2})?$/.test(next)) setAmount(next);
+          }} />
+        <span>USD</span>
       </div>
-      <div id={preview} hidden={!action}>
-        {action && <div className="money-preview">
-          <h3>{action === "add" ? "Add money" : "Withdraw to bank"}</h3>
-          <p>{action === "add" ? "Choose how you’d like to fund your account." : "Send money to your local bank account."}</p>
-          {action === "add" && <label>Payment method
-            <select value={method} onChange={(e) => setMethod(e.target.value === "apple" ? "apple" : "bank")}>
-              <option value="bank">Bank transfer</option>
-              <option value="apple">Apple Pay</option>
-            </select>
-          </label>}
-          <button className="btn wide" type="button" disabled>
-            {action === "withdraw" ? "Withdraw to bank" : method === "bank" ? "Add by bank transfer" : "Add with Apple Pay"} · Coming soon
-          </button>
-          <p className="sub">Preview only. No money moves.</p>
-        </div>}
-      </div>
-    </section>
-  );
+    </div>
+    <dl className="transfer-route" aria-label="Transfer route">
+      <div><dt>From</dt><dd>{deposit ? bank : vault}</dd></div>
+      <div><dt>To</dt><dd>{deposit ? vault : bank}</dd></div>
+    </dl>
+    <footer className="transfer-footer">
+      <button type="button" className="btn" disabled>{deposit ? "Deposit by bank transfer" : "Withdraw to bank"}</button>
+      <p>Preview only. No money moves.</p>
+    </footer>
+  </section>;
 }

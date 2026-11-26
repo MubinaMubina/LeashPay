@@ -1,24 +1,16 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { useState } from "react";
 import type { Address } from "viem";
 import { Brand } from "@/components/Brand";
-import { Skeleton } from "@/components/Skeleton";
-import { Dashboard } from "@/components/Dashboard";
-import { Onboarding } from "@/components/Onboarding";
+import { AccountWorkspace } from "@/components/AccountWorkspace";
 import { explorerAddress, shortAddress } from "@/lib/chain";
 import { useOwnerWallet } from "@/lib/client";
 
-function OwnerWorkspace({ owner }: { owner: Address }) {
-  const [vault, setVault] = useState<Address | null>(null);
-  if (vault) return <Dashboard key={vault} owner={owner} vault={vault} />;
-  return <Onboarding owner={owner} onReady={setVault} />;
-}
-
 export default function Home() {
   const { ready, authenticated, login, logout, user } = usePrivy();
-  const owner = useOwnerWallet();
+  const wallet = useOwnerWallet();
+  const owner = ready && authenticated ? wallet : undefined;
 
   return (
     <>
@@ -26,7 +18,7 @@ export default function Home() {
         <Brand />
         <div className="account">
           <span className="net">BSC testnet</span>
-          {authenticated && (
+          {authenticated ? (
             <>
               <button className="avatar" popoverTarget="owner-menu" aria-label="Account menu">
                 {user?.email?.address?.slice(0, 1).toUpperCase() || "L"}
@@ -37,32 +29,12 @@ export default function Home() {
                 <button className="link" onClick={logout}>Log out</button>
               </div>
             </>
-          )}
+          ) : <button type="button" className="btn header-login" disabled={!ready} onClick={() => login()}>Log in</button>}
         </div>
       </header>
 
-      {ready && authenticated && owner ? (
-        <OwnerWorkspace key={`${user?.id}:${owner.address.toLowerCase()}`} owner={owner.address as Address} />
-      ) : (
-        <main className="center">
-          {!ready ? (
-            <Skeleton label="Loading LeashPay" variant="intro" />
-          ) : !authenticated ? (
-            <section className="card intro">
-              <h1>An AI payments agent on a leash</h1>
-              <p>
-                The agent plans your payouts. Your vault decides what it may pay: only your recipients, within your
-                caps, and only after you sign.
-              </p>
-              <button className="btn" onClick={login}>
-                Log in with email
-              </button>
-            </section>
-          ) : (
-            <Skeleton label="Creating your wallet" variant="intro" />
-          )}
-        </main>
-      )}
+      <AccountWorkspace key={authenticated ? `${user?.id}:${owner?.address.toLowerCase()}` : "visitor"}
+        owner={owner ? owner.address as Address : null} guest={ready && !authenticated} login={login} />
     </>
   );
 }

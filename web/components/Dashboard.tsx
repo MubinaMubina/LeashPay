@@ -9,6 +9,7 @@ import { parseStoredThreshold } from "@/lib/depeg";
 import { formatAmount } from "@/lib/plan-progress";
 import { Skeleton } from "./Skeleton";
 import { Chat } from "./Chat";
+import { AccessNotice, type AccessPrompt } from "./AccessNotice";
 import { MoneyActions } from "./MoneyActions";
 import { useRecipientBook } from "@/lib/recipient-book";
 import { Recipients } from "./Recipients";
@@ -34,9 +35,10 @@ const THRESHOLD_MAX = 20;
  * The owner's depeg limit, kept in this browser per vault (it's the agent's policy, not a vault rule).
  * Storage can be blocked (private modes, strict cookie settings): then the limit lives in memory only.
  */
-function useDepegThreshold(vault: Address): [number, (value: number) => void] {
+function useDepegThreshold(vault: Address | null): [number, (value: number) => void] {
   const [value, setValue] = useState(DEFAULT_THRESHOLD);
   useEffect(() => {
+    if (!vault) return;
     let saved: number | null = null;
     try {
       saved = parseStoredThreshold(window.localStorage.getItem(thresholdKey(vault)), THRESHOLD_MAX);
@@ -47,6 +49,7 @@ function useDepegThreshold(vault: Address): [number, (value: number) => void] {
   }, [vault]);
   const set = useCallback(
     (next: number) => {
+      if (!vault) return;
       setValue(next);
       try {
         window.localStorage.setItem(thresholdKey(vault), String(next));
@@ -62,7 +65,7 @@ function useDepegThreshold(vault: Address): [number, (value: number) => void] {
 /** How long the vault column shows a reaction (balance changed, or "unchanged" after an attack). */
 const REACTION_MS = 4_000;
 
-const WORKSPACE_TABS = ["Payment chat", "Recipients"] as const;
+const WORKSPACE_TABS = ["Payment chat", "Recipients", "Your vault"] as const;
 type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
 const PHONE_QUERY = "(max-width: 799px)";
@@ -74,7 +77,7 @@ function subscribeToWidth(notify: () => void) {
 const readMobile = () => window.matchMedia(PHONE_QUERY).matches;
 const serverMobile = () => false;
 
-export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) {
+export function Dashboard({ owner, vault, access }: { owner: Address | null; vault: Address | null; access: AccessPrompt | null }) {
   const [tab, setTab] = useState<WorkspaceTab>("Payment chat");
   const book = useRecipientBook(vault);
   const [listRequest, setListRequest] = useState(0);
@@ -82,13 +85,16 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
   const tabs = useRef<HTMLDivElement>(null);
   const selectTab = (next: WorkspaceTab, focus = false) => {
     if (next === "Recipients") setDirectoryOpened(true);
-    sheet.current?.close();
     setTab(next);
     if (focus) tabs.current?.querySelectorAll<HTMLButtonElement>("button")[WORKSPACE_TABS.indexOf(next)]?.focus();
   };
+  const accessNotice = access && <AccessNotice prompt={access} onViewVault={() => {
+    selectTab("Your vault");
+    requestAnimationFrame(() => activation.current?.focus());
+  }} />;
   const mobile = useSyncExternalStore(subscribeToWidth, readMobile, serverMobile);
   const dashboard = useRef<HTMLElement>(null);
-  const sheet = useRef<HTMLDialogElement>(null);
+  const activation = useRef<HTMLDivElement>(null);
   const api = useApi();
   const sendAndWait = useSendAndWait();
   const [info, setInfo] = useState<VaultJson | null>(null);
@@ -127,6 +133,7 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
   }, []);
 
   const refresh = useCallback(async () => {
+    if (!vault) return;
     const found = await api<VaultJson>("vault");
     if (found.ok) {
       const balance = found.body.balances.USDT;
@@ -139,13 +146,14 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
       setVaultError(found.body.error || "Couldn’t refresh the vault.");
       setAgentDown(found.status === 502 && found.body.error === "agent unreachable");
     }
-  }, [api, react]);
+  }, [api, react, vault]);
 
   useEffect(() => {
+    if (!vault) return;
     void refresh();
     const every = setInterval(refresh, 15_000);
     return () => clearInterval(every);
-  }, [refresh]);
+  }, [refresh, vault]);
 
   const onSettled = useCallback(
     async (outcome?: { attackRefused?: boolean }) => {
@@ -156,7 +164,7 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
   );
 
   const toggle = useCallback(async () => {
-    if (!info) return;
+    if (!vault || !info) return;
     setKillSwitch({ kind: "sending" });
     try {
       const functionName = info.paused ? "unpause" : "pause";
@@ -171,8 +179,9 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
   const dailyCap = BigInt(info?.rules.dailyCap ?? 0);
   const spent = info && dailyCap > 0n ? Number((BigInt(info.spentToday) * 1000n) / dailyCap) / 10 : 0;
   const paused = info?.paused ?? false;
-  const statusText = vaultError ? "Status unavailable" : !info ? "Loading…" : paused ? "Paused" : "Active";
-  const dotClass = `dot ${vaultError || !info ? "unknown" : paused ? "off" : ""}`;
+  const accessStatus = { guest: "Logged out", inactive: "Not activated", activating: "Activating…", checking: "Checking…", unavailable: "Status unavailable" };
+  const statusText = access ? accessStatus[access.state] : vaultError ? "Status unavailable" : !info ? "Loading…" : paused ? "Paused" : "Active";
+  const dotClass = `dot ${access || vaultError || !info ? "unknown" : paused ? "off" : ""}`;
   const status = (
     <span className="status"><i className={dotClass} />{statusText}</span>
   );
@@ -180,11 +189,7 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
   const vaultPanel = (
     <>
       <div className="vault-scroll">
-        <div className="vault-title">
-          <h2>Your vault</h2>
-          {mobile && <button className="sheet-close link" aria-label="Close vault" onClick={() => sheet.current?.close()}>Close</button>}
-        </div>
-        {status}
+        {!mobile && <><div className="vault-title"><h2>Your vault</h2></div>{status}</>}
         {vaultError && <p className="error-card" role="alert">{vaultError} <button className="link" onClick={refresh}>Retry</button></p>}
         {info ? (
           <>
@@ -198,11 +203,19 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
             <div className="spent-line"><span>Spent today</span><span>{formatAmount(info.spentToday, "").trim()} of {formatAmount(info.rules.dailyCap, "").trim()}</span></div>
             <div className="meter" title="Daily spending limit"><i style={{ width: `${Math.min(100, spent)}%` }} /></div>
           </>
+        ) : access ? (
+          <>
+            <div className="label">Balance</div>
+            <div className="balances">
+              {["USDT", "USDC"].map(coin => <div className="kv" key={coin}><span>{coin}</span>
+                <strong>{access.state === "inactive" || access.state === "activating" ? "0" : "—"}</strong></div>)}
+            </div>
+          </>
         ) : !vaultError && <Skeleton label="Loading balances and spending" />}
-        <MoneyActions />
         <details className="vault-details">
           <summary>Vault rules</summary>
-          <a href={explorerAddress(vault)} target="_blank" rel="noreferrer">{shortAddress(vault)} ↗</a>
+          {vault && <a href={explorerAddress(vault)} target="_blank" rel="noreferrer">{shortAddress(vault)} ↗</a>}
+          {access && <p className="sub">Your active vault enforces recipient and spending limits for each payment.</p>}
           {info && <>
             <div className="kv"><span>Per payment</span><span>{formatAmount(info.rules.perPaymentCap, "USDT")}</span></div>
             <div className="kv"><span>Cooldown</span><span>{info.rules.cooldown} s per person</span></div>
@@ -215,6 +228,7 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
             <span>{depegThreshold}%</span>
           </div>
           <input
+            disabled={!vault}
             className="slider"
             type="range"
             min={0}
@@ -240,9 +254,6 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
 
   return (
     <main ref={dashboard} className="dashboard">
-      {mobile && <button className="vault-trigger" aria-haspopup="dialog" onClick={() => sheet.current?.showModal()}>
-        <span className="status"><i className={dotClass} />Vault {statusText.toLowerCase()}</span><span>View vault ›</span>
-      </button>}
       <div className="main-col">
         <div className="workspace-tabs" ref={tabs} role="tablist" aria-label="Workspace">
           {WORKSPACE_TABS.map((name, index) => (
@@ -253,27 +264,32 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
                 const { key } = event;
                 if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) return;
                 event.preventDefault();
-                const next = key === "Home" ? 0 : key === "End" ? 1 : 1 - index;
+                const count = WORKSPACE_TABS.length;
+                const next = key === "Home" ? 0 : key === "End" ? count - 1 : (index + (key === "ArrowRight" ? 1 : count - 1)) % count;
                 selectTab(WORKSPACE_TABS[next], true);
               }}>{name}</button>
           ))}
         </div>
         {agentDown && <div className="banner">Can’t reach the payment agent. Try again in a moment.</div>}
-        {paused && <div className="banner">Vault paused. The agent can't pay anyone until you unpause. You can still withdraw.</div>}
+        {paused && <div className="banner">Vault paused. Unpause your vault to resume agent payments.</div>}
         <section className="workspace-panel chat-panel" id="panel-0" role="tabpanel" aria-labelledby="tab-0" hidden={tab !== "Payment chat"}>
-          <Chat owner={owner} vault={vault} agent={agent} book={book}
+          <Chat accessNotice={accessNotice} owner={owner} vault={vault} agent={agent} book={book}
             onViewAll={() => { setListRequest(n => n + 1); selectTab("Recipients", true); }} onSettled={onSettled} onAgentDown={() => setAgentDown(true)} depegThreshold={depegThreshold} />
         </section>
         <section className="workspace-panel directory-panel" id="panel-1" role="tabpanel" aria-labelledby="tab-1" hidden={tab !== "Recipients"}>
-          {directoryOpened && <Recipients vault={vault} agent={agent} book={book} listRequest={listRequest} />}
+          {directoryOpened && <Recipients key={vault ?? "preview"} accessNotice={accessNotice} vault={vault} agent={agent} book={book} listRequest={listRequest} />}
+        </section>
+        <section id="panel-2" role="tabpanel" aria-labelledby="tab-2" className="workspace-panel transfer-panel" hidden={tab !== "Your vault"}>
+          <h1>Your vault</h1>
+          {mobile && <details className="mobile-overview">
+            <summary>Balance and rules {status}</summary>
+            {vaultPanel}
+          </details>}
+          <MoneyActions />
+          {access && <div ref={activation} tabIndex={-1}><AccessNotice prompt={access} /></div>}
         </section>
       </div>
-      {mobile ? (
-        <dialog ref={sheet} className="vault-sheet" aria-label="Your vault"
-          onClick={(event) => { if (event.target === sheet.current) sheet.current?.close(); }}>
-          <div className="vault-col">{vaultPanel}</div>
-        </dialog>
-      ) : <aside className="vault-col" aria-label="Your vault">{vaultPanel}</aside>}
+      {!mobile && <aside className="vault-col" aria-label="Your vault">{vaultPanel}</aside>}
     </main>
   );
 }
