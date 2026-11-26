@@ -33,10 +33,6 @@ export const DEMO_RECIPIENTS: readonly DemoRecipient[] = [
   { name: "Mai", address: getAddress("0x5eEccB731a3b642BFE93f0aaBe95AC74F5126B21"), country: "VN", currency: "VND", monthlyCap: usd(20_000) },
 ];
 
-/** When a stablecoin falls below FUNDING_MINIMUM, setup tops it back up to FUNDING_TARGET (the faucet is public). */
-export const FUNDING_TARGET = usd(20_000);
-export const FUNDING_MINIMUM = usd(2_000);
-
 /**
  * The only address the demo attack may target (D15). The add-recipient form rejects it.
  */

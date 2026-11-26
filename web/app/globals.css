@@ -144,20 +144,32 @@ button, input, select { font-family: inherit; }
   padding: 0 24px;
 }
 
-.setup {
-  max-width: 560px;
+.account-home {
+  max-width: 1080px;
+  margin-inline: auto;
+  padding: clamp(24px, 5vw, 64px) var(--gutter);
 }
-.setup h1 {
-  margin: 0 0 8px;
-  font-size: 22px;
-}
-.steps {
-  margin: 14px 0 16px;
-  padding-left: 22px;
-  color: var(--ink-2);
-}
-.steps li {
-  padding: 4px 0;
+.account-home h1 { margin: 0 0 22px; font-size: clamp(28px, 4vw, 38px); letter-spacing: -.045em; }
+.account-grid { display: grid; grid-template-columns: 1.25fr 1fr; align-items: start; gap: 20px; }
+.account-grid > section { min-width: 0; }
+.account-grid h2 { margin: 0 0 16px; font-size: 20px; letter-spacing: -.035em; }
+.account-payments p { margin: 12px 0; color: var(--ink-2); }
+.account-payments p:last-child { margin-bottom: 0; }
+.account-payments .activation-message { padding: 10px 14px; border-left: 3px solid var(--line); }
+.money-actions { margin: 16px 0; }
+.account-balance .money-actions { margin-bottom: 0; }
+.money-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.money-buttons .btn { flex: 1; min-height: 44px; }
+.money-secondary { color: var(--ink); background: var(--panel); border-color: var(--line); }
+.money-preview { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.money-preview h3 { margin: 0; font-size: 16px; }
+.money-preview p { margin: 6px 0 12px; color: var(--ink-2); }
+.money-preview p:last-child { margin-bottom: 0; }
+.money-preview label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.money-preview select { min-height: 44px; padding: 8px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
+.money-preview .btn { white-space: normal; }
+@media (max-width: 680px) {
+  .account-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 }
 .small {
   font-size: 13px;

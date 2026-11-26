@@ -13,7 +13,7 @@ import { useOwnerWallet } from "@/lib/client";
 function OwnerWorkspace({ owner }: { owner: Address }) {
   const [vault, setVault] = useState<Address | null>(null);
   if (vault) return <Dashboard key={vault} owner={owner} vault={vault} />;
-  return <main className="center"><Onboarding owner={owner} onReady={setVault} /></main>;
+  return <Onboarding owner={owner} onReady={setVault} />;
 }
 
 export default function Home() {
@@ -41,7 +41,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Once the vault is ready the dashboard replaces the centered area entirely. */}
       {ready && authenticated && owner ? (
         <OwnerWorkspace key={`${user?.id}:${owner.address.toLowerCase()}`} owner={owner.address as Address} />
       ) : (

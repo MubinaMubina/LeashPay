@@ -1,34 +1,66 @@
-import { getAddress } from "viem";
-import { describe, expect, it } from "vitest";
-import { DEMO_RECIPIENTS, FUNDING_MINIMUM, FUNDING_TARGET } from "@/lib/demo";
-import { planOnboarding, type OnboardingState } from "@/lib/onboarding";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { decodeFunctionData, zeroAddress, type Address } from "viem";
+import { FACTORY_ADDRESS } from "@/lib/chain";
+import { leashVaultFactoryAbi } from "@/lib/abi.generated";
+import { activatePaymentVault, readOwnerVault } from "@/lib/onboarding";
+import { DEMO_RULES } from "@/lib/demo";
 
-const VAULT = getAddress("0x1df5aba120b14d2dd3878b876d9676c5a503b3d2");
-const empty = { USDT: 0n, USDC: 0n };
+const { readContract, getBalance } = vi.hoisted(() => ({ readContract: vi.fn(), getBalance: vi.fn() }));
+vi.mock("@/lib/client", () => ({ publicClient: { readContract, getBalance } }));
 
-describe("planOnboarding", () => {
-  it("sets up a fresh account in three confirmations: create, fund USDT, fund USDC", () => {
-    expect(planOnboarding({ vault: null, balances: empty })).toEqual([{ kind: "createVault" }]);
-    expect(planOnboarding({ vault: VAULT, balances: empty })).toEqual([
-      { kind: "fund", coin: "USDT", amount: FUNDING_TARGET },
-      { kind: "fund", coin: "USDC", amount: FUNDING_TARGET },
-    ]);
+const owner: Address = "0x1111111111111111111111111111111111111111";
+const vault: Address = "0x2222222222222222222222222222222222222222";
+const send = vi.fn();
+
+beforeEach(() => vi.resetAllMocks());
+
+describe("opening a LeashPay account", () => {
+  it.each([[zeroAddress, null], [vault, vault]])("only looks up vaultOf on login", async (onChain, expected) => {
+    readContract.mockResolvedValueOnce(onChain);
+    expect(await readOwnerVault(owner)).toBe(expected);
+    expect(readContract).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      address: FACTORY_ADDRESS, functionName: "vaultOf", args: [owner],
+    }));
+    expect(getBalance).not.toHaveBeenCalled();
   });
 
-  it("resumes a partially funded vault by topping up only the missing amount", () => {
-    const balance = FUNDING_MINIMUM - 1n;
-    expect(planOnboarding({ vault: VAULT, balances: { USDT: FUNDING_TARGET, USDC: balance } })).toEqual([
-      { kind: "fund", coin: "USDC", amount: FUNDING_TARGET - balance },
-    ]);
+  it("reports an unavailable lookup so an existing account is never shown as empty", async () => {
+    readContract.mockRejectedValueOnce(new Error("RPC offline"));
+    await expect(readOwnerVault(owner)).rejects.toThrow("RPC offline");
+  });
+});
+
+describe("optional payment activation", () => {
+  it("skips the wallet prompt when the owner has zero gas", async () => {
+    readContract.mockResolvedValueOnce(zeroAddress);
+    getBalance.mockResolvedValueOnce(0n);
+    await expect(activatePaymentVault(owner, send)).rejects.toThrow(/tBNB/);
+    expect(send).not.toHaveBeenCalled();
   });
 
-  it("opens a funded vault with an empty directory and leaves legacy recipients and caps alone", () => {
-    const funded: OnboardingState = { vault: VAULT, balances: { USDT: FUNDING_MINIMUM, USDC: FUNDING_TARGET } };
-    expect(planOnboarding(funded)).toEqual([]);
-    const oldSetup = {
-      ...funded,
-      recipients: [{ recipient: DEMO_RECIPIENTS[1], allowed: true, monthlyCap: 1n, inDirectory: false }],
-    };
-    expect(planOnboarding(oldSetup)).toEqual([]);
+  it("reuses an existing vault regardless of its stablecoin balances", async () => {
+    readContract.mockResolvedValueOnce(vault);
+    expect(await activatePaymentVault(owner, send)).toBe(vault);
+    expect(send).not.toHaveBeenCalled();
+    expect(getBalance).not.toHaveBeenCalled();
+  });
+
+  it("only signs createVault and returns the owner's confirmed vault", async () => {
+    readContract.mockResolvedValueOnce(zeroAddress).mockResolvedValueOnce(vault);
+    getBalance.mockResolvedValueOnce(10n ** 16n);
+    expect(await activatePaymentVault(owner, send)).toBe(vault);
+    expect(send).toHaveBeenCalledTimes(1);
+    const [target, data] = send.mock.calls[0];
+    expect(target).toBe(FACTORY_ADDRESS);
+    expect(decodeFunctionData({ abi: leashVaultFactoryAbi, data })).toEqual({
+      functionName: "createVault", args: [DEMO_RULES],
+    });
+  });
+
+  it("never reports activation until the owner's vault is readable", async () => {
+    readContract.mockResolvedValue(zeroAddress);
+    getBalance.mockResolvedValueOnce(10n ** 16n);
+    await expect(activatePaymentVault(owner, send)).rejects.toThrow(/vault/i);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });

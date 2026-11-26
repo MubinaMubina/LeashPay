@@ -9,6 +9,7 @@ import { parseStoredThreshold } from "@/lib/depeg";
 import { formatAmount } from "@/lib/plan-progress";
 import { Skeleton } from "./Skeleton";
 import { Chat } from "./Chat";
+import { MoneyActions } from "./MoneyActions";
 import { useRecipientBook } from "@/lib/recipient-book";
 import { Recipients } from "./Recipients";
 
@@ -198,6 +199,7 @@ export function Dashboard({ owner, vault }: { owner: Address; vault: Address }) 
             <div className="meter" title="Daily spending limit"><i style={{ width: `${Math.min(100, spent)}%` }} /></div>
           </>
         ) : !vaultError && <Skeleton label="Loading balances and spending" />}
+        <MoneyActions />
         <details className="vault-details">
           <summary>Vault rules</summary>
           <a href={explorerAddress(vault)} target="_blank" rel="noreferrer">{shortAddress(vault)} ↗</a>

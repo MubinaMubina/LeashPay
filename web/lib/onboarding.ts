@@ -1,47 +1,26 @@
-import type { Address } from "viem";
-import { FUNDING_MINIMUM, FUNDING_TARGET } from "./demo";
+import { encodeFunctionData, zeroAddress, type Address, type Hex } from "viem";
+import { leashVaultFactoryAbi } from "./abi.generated";
+import { FACTORY_ADDRESS } from "./chain";
+import { publicClient } from "./client";
+import { DEMO_RULES } from "./demo";
 
-/**
- * Vault setup that can always be re-run (D10). Each pass reads what already exists and
- * plans only the missing steps, so a closed wallet popup or a network hiccup halfway
- * leaves a state the next pass finishes, never a broken one.
- *
- *   read state ─► planOnboarding ─► run the first step ─► read state again ─► … ─► nothing missing
- */
-
-export type Coin = "USDT" | "USDC";
-
-export interface OnboardingState {
-  /** factory.vaultOf(owner); null when the owner has no vault yet. */
-  vault: Address | null;
-  balances: Record<Coin, bigint>;
+export async function readOwnerVault(owner: Address): Promise<Address | null> {
+  const vault = await publicClient.readContract({
+    address: FACTORY_ADDRESS, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner],
+  });
+  return vault === zeroAddress ? null : vault;
 }
 
-export type OnboardingStep =
-  | { kind: "createVault" }
-  | { kind: "fund"; coin: Coin; amount: bigint };
-
-/** The steps still missing, in the order they must run. Empty means setup is complete. */
-export function planOnboarding(state: OnboardingState): OnboardingStep[] {
-  // Everything else lives in the vault, so nothing else can be planned until it exists.
-  if (!state.vault) return [{ kind: "createVault" }];
-
-  const steps: OnboardingStep[] = [];
-  for (const coin of ["USDT", "USDC"] as const) {
-    const balance = state.balances[coin];
-    // Payments spend the balance down; only a coin that runs low is topped up, so normal
-    // use never sends the owner back to setup.
-    if (balance < FUNDING_MINIMUM) steps.push({ kind: "fund", coin, amount: FUNDING_TARGET - balance });
+/** Only called when the owner explicitly chooses to enable on-chain payments. */
+export async function activatePaymentVault(owner: Address, sendAndWait: (to: Address, data: Hex) => Promise<Hex>) {
+  const existing = await readOwnerVault(owner);
+  if (existing) return existing;
+  if (await publicClient.getBalance({ address: owner }) === 0n) {
+    throw new Error("Your account is open. To enable payments later, your wallet needs a little testnet BNB (tBNB) for the network fee.");
   }
-  return steps;
-}
-
-/** A short label for the setup checklist. */
-export function describeStep(step: OnboardingStep): string {
-  switch (step.kind) {
-    case "createVault":
-      return "Create your vault";
-    case "fund":
-      return `Get test ${step.coin} for the vault`;
-  }
+  const data = encodeFunctionData({ abi: leashVaultFactoryAbi, functionName: "createVault", args: [DEMO_RULES] });
+  await sendAndWait(FACTORY_ADDRESS, data);
+  const vault = await readOwnerVault(owner);
+  if (!vault) throw new Error("Vault creation was confirmed. Check again in a moment to open your vault.");
+  return vault;
 }
