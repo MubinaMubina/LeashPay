@@ -33,7 +33,37 @@
   letter-spacing: -.054em;
   text-wrap: balance;
 }
-.intro h1 em { display: block; color: var(--green); font-weight: inherit; }
+.tagline { display: flex; align-items: start; gap: 8px; margin-top: 12px; }
+.phrases {
+  display: grid;
+  min-width: 0;
+  color: var(--green);
+  font: italic 600 clamp(25px, 2.5vw, 36px)/1.15 var(--serif);
+  letter-spacing: -.025em;
+}
+/* Both phrases size the same grid cell, including when the longer one wraps. */
+.phrases span { grid-area: 1 / 1; opacity: 0; transition: opacity 160ms ease-out; }
+.phrases span[data-active="true"] { opacity: 1; }
+.rotationControl {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.rotationControl:hover { background: #efefe4; }
+.rotationControl::before { content: ""; width: 4px; height: 10px; box-sizing: content-box; border-inline: 2px solid; }
+.rotationControl[data-paused="true"]::before { width: 0; height: 0; margin-left: 2px; border: solid transparent; border-width: 5px 0 5px 8px; border-left-color: currentColor; }
+@media (prefers-reduced-motion: reduce) {
+  .phrases span { grid-area: auto; opacity: 1; transition: none; }
+  .rotationControl { display: none; }
+}
 .intro p { max-width: 440px; margin: 20px 0 26px; color: var(--muted); font-size: clamp(16px, 1.4vw, 18px); line-height: 1.55; }
 .actions { flex-wrap: wrap; gap: 4px 22px; }
 .actions a, .signIn { font-size: 15px; }

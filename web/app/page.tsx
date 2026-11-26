@@ -3,9 +3,47 @@
 import { usePrivy } from "@privy-io/react-auth";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { Workspace } from "@/components/Workspace";
 import styles from "./Welcome.module.css";
+
+function PayoutTagline() {
+  const [showApproval, setShowApproval] = useState(false);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused) return;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer: number | undefined;
+    function sync() {
+      window.clearInterval(timer);
+      if (!motion.matches && !document.hidden) {
+        timer = window.setInterval(() => setShowApproval(current => !current), 1000);
+      }
+    }
+    sync();
+    motion.addEventListener("change", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.clearInterval(timer);
+      motion.removeEventListener("change", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [paused]);
+
+  const action = paused ? "Resume rotating text" : "Pause rotating text";
+  return (
+    <div className={styles.tagline}>
+      <div className={styles.phrases}>
+        <span data-active={!showApproval}>Stablecoin payouts</span>{" "}
+        <span data-active={showApproval}>Your agent plans the payout. You approve it.</span>
+      </div>
+      <button type="button" className={styles.rotationControl} aria-label={action} title={action}
+        data-paused={paused} onClick={() => setPaused(current => !current)} />
+    </div>
+  );
+}
 
 export default function Home() {
   const { ready, authenticated, login } = usePrivy();
@@ -23,8 +61,9 @@ export default function Home() {
       <main className={styles.layout}>
         <section className={styles.hero} aria-labelledby="welcome-title">
           <div className={styles.intro}>
-            <h1 id="welcome-title">Pay your contractors <em>in stablecoins.</em></h1>
-            <p>Tell LeashPay who to pay in USDT or USDC. Review the plan, then approve it from a vault that enforces your spending limits.</p>
+            <h1 id="welcome-title">Tell LeashPay who to pay</h1>
+            <PayoutTagline />
+            <p>Pay contractors in USDT or USDC from a vault that enforces your spending limits.</p>
             <div className={styles.actions}>
               <button className={styles.signIn} type="button" disabled={!ready} onClick={() => login()}>
                 Continue with email
