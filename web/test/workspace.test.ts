@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
+import WorkspacePage from "@/app/workspace/page";
 import { MoneyActions } from "@/components/MoneyActions";
 import { CashFlow } from "@/components/CashFlow";
 
@@ -24,14 +25,26 @@ beforeEach(() => {
 });
 
 describe("public workspace", () => {
-  it.each(["guest", "loading", "wallet pending", "owner"])("renders the same navigation and composer for %s", state => {
+  it.each([true, false])("offers email sign-in and a public preview on the home page (ready: %s)", ready => {
+    auth.ready = ready;
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toContain("Pay your contractors in stablecoins.");
+    expect(html).toContain("Example payout");
+    expect(html).toMatch(/href="\/workspace"/);
+    const button = html.match(/<button[^>]*>Continue with email<\/button>/)?.[0];
+    expect(button).toBeDefined();
+    expect(button?.includes("disabled")).toBe(!ready);
+    expect(html).not.toContain('aria-label="Message the agent"');
+    expect(api).not.toHaveBeenCalled();
+  });
+  it.each(["guest", "loading", "wallet pending", "owner"])("opens the workspace for %s", state => {
     if (state === "loading") auth.ready = false;
     if (state === "wallet pending" || state === "owner") {
       auth.authenticated = true;
       auth.user = { id: "user" };
     }
     if (state === "owner") wallet.current = { address: "0x1111111111111111111111111111111111111111" };
-    const html = renderToStaticMarkup(createElement(Home));
+    const html = renderToStaticMarkup(createElement(auth.authenticated ? Home : WorkspacePage));
     for (const name of ["Payment chat", "Recipients", "Your vault", "Cash flow"]) expect(html).toMatch(new RegExp('role="tab"[^>]+>' + name + '<'));
     expect(html).toContain('aria-label="Message the agent"');
     expect(api).not.toHaveBeenCalled();
