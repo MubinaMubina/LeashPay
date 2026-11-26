@@ -30,6 +30,8 @@ const EnvSchema = z.object({
   AGENT_API_TOKEN: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   /** Cournot's prepaid key, for when the free quota is used up. The guard works without it while free calls last. */
   COURNOT_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  /** CoinMarketCap Pro key, for local-currency amounts on plans. Without it, plans show dollars only. */
+  CMC_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   /** "1" turns on POST /plans/:id/demo-attack for the live demo. Off unless set. */
   AGENT_DEMO_ATTACK: z.preprocess(emptyToUndefined, z.enum(["0", "1"]).default("0")),
   DATA_DIR: z.string().default(path.resolve(here, "../data")),

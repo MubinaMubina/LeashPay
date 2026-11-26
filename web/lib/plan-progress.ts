@@ -15,7 +15,13 @@ export interface PaymentJson {
   warnings: string[];
   /** null: the vault's check passed. An error: the vault refuses. Missing: the check couldn't run. */
   preview?: VaultRevertJson | null;
+  /** The amount in the recipient's local currency (CoinMarketCap), when they have one. Display only. */
+  local?: LocalAmountJson;
 }
+
+export type LocalAmountJson =
+  | { currency: string; amount: number; rate: number; quotedAt: string; source: string }
+  | { currency: string; error: string };
 
 export type DepegJson =
   | {
@@ -127,4 +133,26 @@ export function formatAmount(amount: string | null, token: string): string {
   if (!amount) return "—";
   const value = Number(formatUnits(BigInt(amount), 18));
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${token}`;
+}
+
+/** The currency's own decimals: none for VND, two for PHP and THB. */
+function currencyDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
+/** "≈ 7,752,700 VND", or null when there is no local amount to show. */
+export function formatLocal(local: LocalAmountJson | undefined): string | null {
+  if (!local || "error" in local || !Number.isFinite(local.amount)) return null;
+  const digits = currencyDigits(local.currency);
+  return `≈ ${local.amount.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${local.currency}`;
+}
+
+/** The oldest rate time among the plan's local amounts (ISO), or null when none has a rate. */
+export function localQuotedAt(payments: PaymentJson[]): string | null {
+  const times = payments.flatMap((p) => (p.local && !("error" in p.local) ? [p.local.quotedAt] : []));
+  return times.length > 0 ? times.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b)) : null;
 }

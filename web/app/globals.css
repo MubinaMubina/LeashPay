@@ -397,6 +397,19 @@ code {
 .amount {
   font-weight: 600;
 }
+.amount small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+.received-local {
+  color: var(--ink-3);
+  font-size: 14px;
+}
+.fx-source {
+  margin-top: 6px;
+}
 .badge {
   justify-self: end;
   max-width: 100%;

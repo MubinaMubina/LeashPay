@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SLOW_AFTER_MS, formatAmount, needsCheckAgain, rowStatus, type JournalEventJson, type PaymentJson } from "@/lib/plan-progress";
+import { SLOW_AFTER_MS, formatAmount, formatLocal, localQuotedAt, needsCheckAgain, rowStatus, type JournalEventJson, type PaymentJson } from "@/lib/plan-progress";
 
 const payment = (over: Partial<PaymentJson> = {}): PaymentJson => ({
   recipientName: "Linh",
@@ -75,5 +75,31 @@ describe("formatAmount", () => {
     expect(formatAmount("300000000000000000000", "USDT")).toBe("300 USDT");
     expect(formatAmount("19050000000000000000000", "USDT")).toBe("19,050 USDT");
     expect(formatAmount(null, "USDT")).toBe("—");
+  });
+});
+
+describe("local-currency amounts", () => {
+  const local = (currency: string, amount: number, quotedAt = "2026-11-26T03:38:03.000Z") => ({ currency, amount, rate: 1, quotedAt, source: "CoinMarketCap" });
+
+  it("rounds to the currency's own unit", () => {
+    expect(formatLocal(local("VND", 7_752_699.84))).toBe("≈ 7,752,700 VND");
+    expect(formatLocal(local("PHP", 28_661.756))).toBe("≈ 28,661.76 PHP");
+  });
+
+  it("shows nothing without a rate", () => {
+    expect(formatLocal(undefined)).toBeNull();
+    expect(formatLocal({ currency: "VND", error: "CoinMarketCap answered HTTP 429." })).toBeNull();
+    expect(formatLocal(local("VND", Number.NaN))).toBeNull();
+  });
+
+  it("names the oldest rate time on the plan", () => {
+    const rows = [
+      payment({ local: local("VND", 1, "2026-11-26T03:40:00.000Z") }),
+      payment({ local: local("PHP", 1, "2026-11-26T03:38:03.000Z") }),
+      payment({ local: { currency: "THB", error: "down" } }),
+      payment(),
+    ];
+    expect(localQuotedAt(rows)).toBe("2026-11-26T03:38:03.000Z");
+    expect(localQuotedAt([payment()])).toBeNull();
   });
 });

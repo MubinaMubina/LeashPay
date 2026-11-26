@@ -1,4 +1,5 @@
 import type { DepegDecision } from "../depeg/guard";
+import type { LocalAmount } from "../fx/rates";
 import { formatUnits, getAddress, isAddress, keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
 import type { VaultRevert } from "../chain/errors";
 import type { VaultSnapshot } from "../chain/gateway";
@@ -15,6 +16,8 @@ export interface PlannedPayment {
   warnings: string[];
   /** The vault's verdict from a simulation, when one was run (null = it would go through). */
   preview?: VaultRevert | null;
+  /** The amount in the recipient's local currency (CoinMarketCap), when they have one. Display only. */
+  local?: LocalAmount;
 }
 
 export interface Plan {

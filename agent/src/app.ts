@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
 import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
 import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegDecision, type DepegGuard } from "./depeg/guard";
+import { attachLocalAmounts, currenciesFor, type FxService } from "./fx/rates";
 import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
 import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
@@ -32,6 +33,8 @@ export interface AppDeps {
   allowedHosts?: string[];
   /** The depeg guard (Cournot). Without it, plans keep the coins they were planned with. */
   depeg?: DepegGuard;
+  /** Local-currency amounts (CoinMarketCap). Without it, plans show amounts in dollars only. */
+  fx?: FxService;
   /** Turns on POST /plans/:id/demo-attack (AGENT_DEMO_ATTACK=1). Off by default: the route answers 404. */
   demoAttack?: boolean;
   now?: () => Date;
@@ -218,6 +221,9 @@ export function createApp(deps: AppDeps) {
     });
     const context = { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at };
     let plan = buildPlan(draft, context);
+    // Asked while the depeg guard runs; each quote has both coins, so the guard's choice doesn't matter yet.
+    const fxCurrencies = plan.kind === "payment" && deps.fx ? currenciesFor(plan, directory) : [];
+    const fxQuotes = fxCurrencies.length > 0 ? deps.fx!.quotes(fxCurrencies) : null;
     // The guard runs only for a plan that can run (a vault) and pays someone, to save Cournot quota.
     // Its coin is applied by building again, so merging lines sees the final coin.
     if (deps.depeg && vault && plan.kind === "payment" && plan.payments.some(isExecutable)) {
@@ -229,6 +235,7 @@ export function createApp(deps: AppDeps) {
       plan.depeg = { ...decision, note };
       plan.notes.push(note);
     }
+    if (fxQuotes) attachLocalAmounts(plan, directory, await fxQuotes);
     if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });

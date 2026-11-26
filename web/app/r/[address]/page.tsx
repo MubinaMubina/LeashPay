@@ -4,7 +4,10 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
 import { DEMO_RECIPIENTS } from "@/lib/demo";
-import { formatAmount } from "@/lib/plan-progress";
+import { readingTime } from "@/lib/depeg";
+import { FX_CURRENCIES, type FxRates } from "@/lib/fx";
+import { formatAmount, formatLocal } from "@/lib/plan-progress";
+import { formatUnits } from "viem";
 import type { ReceivedPayment } from "@/lib/recipient-logs";
 
 // The two stablecoins of the chain 97 deployment (contracts/deployments/97.json).
@@ -21,6 +24,28 @@ export default function RecipientPage() {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [cashOut, setCashOut] = useState(false);
   const known = DEMO_RECIPIENTS.find((r) => r.address.toLowerCase() === address.toLowerCase());
+  const currency = known && (FX_CURRENCIES as readonly string[]).includes(known.currency) ? known.currency : null;
+  const [rates, setRates] = useState<FxRates | null>(null);
+
+  // Today's value in the recipient's currency. Optional: without it the page still shows the coin amounts.
+  useEffect(() => {
+    if (!currency) return;
+    let live = true;
+    fetch(`/api/fx/${currency}`, { cache: "no-store" })
+      .then(async (r) => (r.ok ? ((await r.json()) as FxRates) : null))
+      .then((body) => live && setRates(body))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [currency]);
+
+  const localValue = (p: ReceivedPayment) => {
+    const token = TOKENS[p.token.toLowerCase()] as "USDT" | "USDC" | undefined;
+    if (!rates || !token) return null;
+    const rate = rates[token];
+    return formatLocal({ currency: rates.currency, amount: Number(formatUnits(BigInt(p.amount), 18)) * rate, rate, quotedAt: rates.quotedAt, source: "CoinMarketCap" });
+  };
 
   const fetchPayments = useCallback(async () => {
     setLoad({ kind: "loading" });
@@ -70,6 +95,7 @@ export default function RecipientPage() {
         load.payments.map((p) => (
           <div className="card received" key={p.hash}>
             <div className="received-amount">{formatAmount(p.amount, TOKENS[p.token.toLowerCase()] ?? "tokens")}</div>
+            {localValue(p) && <div className="received-local">{localValue(p)} today</div>}
             <div className="hint small">
               {p.timestamp ? new Date(p.timestamp * 1000).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : `block ${p.block}`} ·
               from vault {shortAddress(p.vault)}
@@ -79,6 +105,10 @@ export default function RecipientPage() {
             </a>
           </div>
         ))}
+
+      {load.kind === "ready" && load.payments.length > 0 && rates && (
+        <p className="hint small">Today&apos;s value: CoinMarketCap rate from {readingTime(rates.quotedAt)}.</p>
+      )}
 
       {load.kind === "ready" && load.payments.length > 0 && (
         <>

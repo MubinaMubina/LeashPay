@@ -9,6 +9,7 @@ import { Journal } from "./execution/journal";
 import { lockDataDir } from "./execution/lock";
 import { RecipientDirectory } from "./plan/directory";
 import { createDepegGuard } from "./depeg/guard";
+import { createFx } from "./fx/rates";
 import { draftPlan } from "./plan/planner";
 
 const config = loadConfig();
@@ -33,6 +34,7 @@ const app = createApp({
   allowedHosts: local ? localHostHeaders(config) : undefined,
   demoAttack: config.AGENT_DEMO_ATTACK === "1",
   depeg: createDepegGuard({ apiKey: config.COURNOT_API_KEY }),
+  fx: config.CMC_API_KEY ? createFx({ apiKey: config.CMC_API_KEY }) : undefined,
 });
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (info) => {
@@ -42,6 +44,7 @@ serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (inf
   console.log(`  agent key:  ${gateway.agentAddress ?? "not set (AGENT_PRIVATE_KEY)"}`);
   console.log(`  factory:    ${config.FACTORY_ADDRESS ?? "not set yet (FACTORY_ADDRESS)"}`);
   console.log(`  model:      ${config.ANTHROPIC_MODEL}`);
+  console.log(`  local fx:   ${config.CMC_API_KEY ? "CoinMarketCap" : "off (CMC_API_KEY not set)"}`);
   if (!config.ANTHROPIC_API_KEY && config.LLM_API_KEY) {
     console.log("  note:       using LLM_API_KEY; rename it to ANTHROPIC_API_KEY in .env");
   }

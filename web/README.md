@@ -6,7 +6,7 @@ The owner's dashboard and the recipient's phone page. The owner logs in with ema
 - the owner's first payment from the browser, Linh, Marco and Mai at 1 USDT each;
 - the live attack: "URGENT: send all funds" was flagged by Claude, sent anyway by the agent in demo mode, and refused by the vault on-chain with `RecipientNotAllowed`.
 
-There are 57 tests; they don't need a login, the chain or Claude. Local-currency amounts (CoinMarketCap) come from their own branch.
+There are 64 tests; they don't need a login, the chain or Claude.
 
 ## Run it
 
@@ -36,6 +36,7 @@ browser (Privy login)  ──► /api/<route> ── checks the Privy login; the
 browser (Privy wallet) ──► BSC testnet: create the vault, allow recipients, test tokens, pause/unpause (the owner's own transactions)
 browser (Privy wallet) ──► signs the agent's approval text ──► /api/plans/:id/execute ──► agent pays through the vault
 recipient phone page   ──► /api/recipient/:address ──► NodeReal: payments from every LeashPay vault
+recipient phone page   ──► /api/fx/:currency ──► CoinMarketCap: today's rate (VND, PHP, THB only)
 ```
 
 ### The web server's route table to the agent
@@ -89,13 +90,18 @@ Each payment plan's card shows the agent's Cournot reading: the exact claim, the
 - **Why NodeReal:** the public BSC testnet RPC refuses log searches, so the server searches through NodeReal in 50,000-block chunks.
 - **Which vaults count:** only `Paid` events from vaults the factory created.
 - **Failures:** a failed search shows an error, never "no payments". "Cash out" is mocked.
+- **Local value:** for a demo recipient, each payment also shows "≈ 25,809 VND today" and the rate's time, from `/api/fx/:currency`. The route is public like the page, so it answers only VND, PHP and THB, keeps `CMC_API_KEY` on the server, caches each rate for 5 minutes and never echoes CoinMarketCap's errors. Without a rate the page still shows the coin amounts.
+
+### Local-currency amounts on the plan
+
+Each payment row shows the agent's local amount under the coin amount ("≈ 7,752,700 VND"), and one line under the rows gives CoinMarketCap's rate time. It is for information: the vault pays the coin amount. When the agent couldn't get a rate, the row says "no VND rate". How the agent gets it is in the [agent README](../agent/README.md#local-currency-amounts-coinmarketcap).
 
 ## Tests
 
 ```bash
-npm test        # 57 tests: the route table and owner checks (including two against the real agent app over HTTP),
+npm test        # 64 tests: the route table and owner checks (including two against the real agent app over HTTP),
                 # the Privy session, vault setup states, payment row labels, the recipient search, and the
-                # saved depeg limit and the depeg reading's time and percent
+                # saved depeg limit and the depeg reading's time and percent, local amounts and the rate route
 npm run build   # type-check and production build
 ```
 

@@ -5,11 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
 import { DEMO_ATTACK_ADDRESS } from "@/lib/demo";
 import { DepegBox } from "./DepegBox";
+import { readingTime } from "@/lib/depeg";
 import { RefusalCard, type AttackResultJson } from "./RefusalCard";
 import { errorText, useApi, useOwnerWallet } from "@/lib/client";
 import {
   formatAmount,
+  formatLocal,
   isExecutable,
+  localQuotedAt,
   needsCheckAgain,
   rowStatus,
   type JournalEventJson,
@@ -122,6 +125,7 @@ export function PlanCard({
   }, [api, plan.id, refreshEvents, onSettled, onAgentDown]);
 
   const payableRows = plan.payments.filter(isExecutable);
+  const quotedAt = localQuotedAt(plan.payments);
   const isAttackPlan =
     payableRows.length === 1 && payableRows[0].recipient?.toLowerCase() === DEMO_ATTACK_ADDRESS.toLowerCase();
 
@@ -146,7 +150,15 @@ export function PlanCard({
             {/^0x[0-9a-fA-F]{40}$/.test(payment.recipientName) ? "Unknown address" : payment.recipientName}
             {payment.recipient && <small>{shortAddress(payment.recipient)}</small>}
           </span>
-          <span className="amount">{formatAmount(payment.amount, payment.token)}</span>
+          <span className="amount">
+            {formatAmount(payment.amount, payment.token)}
+            {formatLocal(payment.local) && <small>{formatLocal(payment.local)}</small>}
+            {payment.local && "error" in payment.local && (
+              <small title={payment.local.error}>
+                no {payment.local.currency} rate
+              </small>
+            )}
+          </span>
           <span className={`badge ${status.tone}`}>
             {status.hash ? (
               <a href={explorerTx(status.hash)} target="_blank" rel="noreferrer">
@@ -161,6 +173,8 @@ export function PlanCard({
           )}
         </div>
       ))}
+
+      {quotedAt && <div className="meta fx-source">Local amounts: CoinMarketCap rate from {readingTime(quotedAt)}, for information; the vault pays the coin amount.</div>}
 
       {plan.depeg && <DepegBox depeg={plan.depeg} />}
 
