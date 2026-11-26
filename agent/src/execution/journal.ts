@@ -1,12 +1,15 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, truncateSync } from "node:fs";
 import path from "node:path";
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
+import type { VaultSnapshot } from "../chain/gateway";
+import { buildRunway } from "../runway";
 import type { VaultRevert } from "../chain/errors";
 import { bigintReplacer, planFromJson, type PlanJson } from "../json";
 import type { Plan } from "../plan/build";
 
 export type JournalEvent =
   | { type: "plan_created"; planId: string; at: string; plan: PlanJson }
+  | { type: "runway_inclusion"; planId: string; at: string; included: boolean }
   /** A signed pay() transaction, journaled before it is broadcast. Its outcome is not known yet. */
   | { type: "step_sent"; planId: string; at: string; index: number; hash: Hex }
   /**
@@ -75,6 +78,25 @@ export class Journal {
 
   eventsFor(planId: string): JournalEvent[] {
     return this.events.filter((e) => e.planId === planId);
+  }
+
+  async runway(owner: Address, readVault: () => Promise<VaultSnapshot>, now: () => Date) {
+    // If a payout settles while the balance is being read, its journal and chain reads can
+    // describe different points in time. Retry the snapshot before publishing a projection.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cursor = this.events.length;
+      const vault = await readVault();
+      const settled = this.events.slice(cursor).some(e =>
+        e.type === "step_succeeded" && this.plan(e.planId)?.vault === vault.vault);
+      if (!settled) return buildRunway(this.events, owner, vault, now());
+    }
+    return null;
+  }
+
+  setRunwayInclusion(planId: string, included: boolean): void {
+    const previous = this.events.findLast(e => e.planId === planId && e.type === "runway_inclusion");
+    const wasIncluded = previous?.type === "runway_inclusion" && previous.included;
+    if (wasIncluded !== included) this.append({ type: "runway_inclusion", planId, included });
   }
 
   plan(planId: string): Plan | null {

@@ -44,6 +44,8 @@ interface Route {
 
 export const ROUTES: readonly Route[] = [
   { method: "GET", web: ["vault"], agent: ({ owner }) => `/vaults/${owner}`, owner: "path", timeoutMs: 30_000 },
+  { method: "GET", web: ["runway"], agent: ({ owner }) => `/vaults/${owner}/runway`, owner: "path", timeoutMs: 30_000 },
+  { method: "POST", web: ["runway", "inclusion"], agent: () => "/runway/inclusion", owner: "body", timeoutMs: 30_000 },
   { method: "GET", web: ["directory"], agent: ({ owner }) => `/directory?owner=${owner}`, owner: "query", timeoutMs: 15_000 },
   { method: "POST", web: ["directory"], agent: () => "/directory", owner: "body", timeoutMs: 15_000 },
   { method: "POST", web: ["chat"], agent: () => "/chat", owner: "body", timeoutMs: 65_000 },

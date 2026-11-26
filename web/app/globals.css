@@ -928,3 +928,40 @@ summary { cursor: pointer; }
   .composer-wrap { padding-top: 8px; }
   .me { max-width: 90%; }
 }
+
+.runway { flex-shrink: 0; min-width: 0; }
+.runway-intro, .runway-caption, .runway-basis { color: var(--ink-3); }
+.runway-intro { margin: 4px 0 16px; }
+.runway-balances { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding-block: 14px 4px; border-top: 1px solid var(--line); }
+.runway-balances > div { display: grid; align-content: start; gap: 2px; padding-right: 12px; min-width: 0; overflow-wrap: anywhere; }
+.runway-balances > div + div { border-left: 1px solid var(--line); padding: 0 0 0 16px; }
+.runway-balances dt { font-size: 13px; font-weight: 600; }
+.runway-balances dd { margin: 0; line-height: 1.15; font-size: clamp(22px, 3vw, 32px); letter-spacing: -.035em; font-weight: 600; }
+.runway-balances small, .runway-caption, .runway-plans summary span { color: var(--ink-3); font-size: 12px; }
+.runway-caption { margin: 6px 0 12px; }
+.runway-note { border-left: 3px solid var(--line); background: var(--bg); margin: 12px 0; padding: 9px 12px; font-size: 14px; }
+.runway-note.short { border-color: var(--stop); background: var(--stop-bg); }
+.runway-note.tight { border-color: var(--gold-ink); }
+.runway-weeks { width: 100%; table-layout: fixed; font-size: 13px; border-collapse: collapse; }
+.runway-weeks caption { font-weight: 600; text-align: left; padding-block: 8px; }
+.runway-weeks th, .runway-weeks td { padding: 8px 2px; border-bottom: 1px solid var(--line); text-align: right; overflow-wrap: anywhere; }
+.runway-weeks th:first-child { width: 46%; text-align: left; }
+.runway-weeks thead th { font-weight: 500; color: var(--ink-3); }
+.runway-weeks tbody th { font-weight: 500; }
+.runway-weeks small { display: block; font-weight: 600; }
+.runway-weeks .short { color: var(--stop); }
+.runway-weeks .tight { color: var(--gold-ink); }
+.runway-plans { border-block: 1px solid var(--line); margin-top: 12px; }
+.runway-plans summary { cursor: pointer; padding-block: 12px; min-height: 44px; font-weight: 600; }
+.runway-plans summary span { margin-inline-start: 6px; font-weight: 400; }
+.runway-choice { display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid var(--line); min-height: 44px; padding: 10px 2px; cursor: pointer; overflow-wrap: anywhere; }
+.runway-choice input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; accent-color: var(--ink); }
+.runway-choice strong, .runway-choice small { display: block; }
+.runway-choice small { color: var(--ink-2); }
+.runway-basis { margin: 12px 0 0; }
+.runway-empty { padding-block: 10px; margin: 0; border-top: 1px solid var(--line); font-size: 14px; }
+.runway-empty p { margin: 0; }
+.runway-empty button { min-height: 44px; }
+.skeleton-runway .runway-balances { padding-bottom: 12px; }
+.skeleton-runway i { display: block; }
+.skeleton-runway .sk-row { width: 65%; height: 28px; margin-block: 6px; border-radius: 4px; background: var(--line); }
