@@ -6,6 +6,11 @@ import type { TokenSymbol } from "../plan/directory";
 import { isExecutable, type ExecutablePayment, type Plan } from "../plan/build";
 import type { Journal, JournalEvent } from "./journal";
 
+/** The note on a row an earlier run already paid: nothing new happened in this run. */
+export const ALREADY_PAID_NOTE = "Already paid in an earlier run.";
+/** The note on a row sent in an earlier run that this run only confirmed. */
+export const CONFIRMED_EARLIER_NOTE = "Confirmed from an earlier run.";
+
 export interface PaymentResult {
   index: number;
   recipientName: string;
@@ -27,6 +32,31 @@ export class AgentBusyError extends Error {
     this.name = "AgentBusyError";
   }
 }
+
+/** The demo attack was asked to send something it never sends; nothing went out. */
+export class AttackRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AttackRefusedError";
+  }
+}
+
+/** What the demo attack's one transaction did, once its block is final (or still pending). */
+export interface AttackResult {
+  index: number;
+  recipient: Address;
+  hash: Hex;
+  status: "reverted" | "succeeded" | "pending";
+  /** The vault error's name, such as RecipientNotAllowed, when one was found. */
+  reason: string | null;
+  reasonMessage?: string;
+  /** replay: the same call re-run at the block before; preview: the vault check made with the plan. */
+  reasonSource: "replay" | "preview" | null;
+  block: string | null;
+}
+
+/** Enough for any refusal path in pay(); a fixed limit, because the attack skips gas estimation. */
+export const DEMO_ATTACK_GAS = 200_000n;
 
 export interface ExecutorDeps {
   gateway: VaultGateway;
@@ -96,6 +126,94 @@ export class Executor {
     }
   }
 
+  /**
+   * The demo attack: plays a compromised agent that pays without the owner's signature, and
+   * shows the vault refusing it on-chain. It can never move money: it only ever targets
+   * `target` (an address the web app refuses to allowlist), re-checks right before signing
+   * that the vault doesn't allow it, and refuses any plan with another payable row. It takes
+   * the same single-plan lock, nonce handling and journal as real payments.
+   */
+  async demoAttack(plan: Plan, target: Address): Promise<AttackResult[]> {
+    if (!plan.vault) throw new Error("This plan has no vault, so there is nothing to execute.");
+    if (!this.deps.gateway.agentAddress) {
+      throw new ConfigurationError("AGENT_PRIVATE_KEY is not set in .env, so the agent can't send payments.");
+    }
+    if (this.running) throw new AgentBusyError(this.running);
+    this.running = plan.vault;
+    try {
+      const payable = [...plan.payments.entries()].filter((entry): entry is [number, ExecutablePayment] => isExecutable(entry[1]));
+      const only = payable.length === 1 ? payable[0] : undefined;
+      if (!only || only[1].recipient.toLowerCase() !== target.toLowerCase()) {
+        throw new AttackRefusedError(`The demo attack only sends one payment, to ${target}. Nothing was sent.`);
+      }
+      const [index, payment] = only;
+      const tokens = await this.deps.gateway.deployment();
+      const step: PayStep = {
+        recipient: target,
+        token: payment.token === "USDC" ? tokens.usdc : tokens.usdt,
+        amount: payment.amount,
+        ref: plan.ref,
+      };
+      if (await this.deps.gateway.isAllowed(plan.vault, target)) {
+        throw new AttackRefusedError("This vault allows the demo attack address, so the attack could pay it. Nothing was sent.");
+      }
+
+      const signed = await this.deps.gateway.signPayUnchecked(plan.vault, step, DEMO_ATTACK_GAS);
+      try {
+        this.deps.journal.append({ type: "demo_attack_sent", planId: plan.id, index, hash: signed.hash });
+      } catch (err) {
+        signed.discard();
+        throw err;
+      }
+      await signed.broadcast();
+      const outcome = await this.deps.gateway.waitForOutcome(signed.hash);
+
+      let reason: VaultRevert | null = null;
+      let reasonSource: AttackResult["reasonSource"] = null;
+      if (outcome.status === "reverted" && outcome.block !== null) {
+        try {
+          reason = await this.deps.gateway.replayRevert(plan.vault, step, outcome.block);
+          if (reason) reasonSource = "replay";
+        } catch {
+          // the node couldn't replay it: fall back to the check made with the plan
+        }
+        if (!reason && payment.preview) {
+          reason = payment.preview;
+          reasonSource = "preview";
+        }
+        this.deps.journal.append({
+          type: "step_failed",
+          planId: plan.id,
+          index,
+          hash: signed.hash,
+          error: reason ? `${reason.name}: ${reason.message}` : "The transaction reverted on-chain.",
+        });
+      } else if (outcome.status === "succeeded") {
+        this.deps.journal.append({
+          type: "step_succeeded",
+          planId: plan.id,
+          index,
+          hash: signed.hash,
+          note: "Demo attack: the vault did NOT refuse this payment.",
+        });
+      }
+      return [
+        {
+          index,
+          recipient: target,
+          hash: signed.hash,
+          status: outcome.status,
+          reason: reason?.name ?? null,
+          ...(reason ? { reasonMessage: reason.message } : {}),
+          reasonSource,
+          block: outcome.block === null ? null : outcome.block.toString(),
+        },
+      ];
+    } finally {
+      this.running = null;
+    }
+  }
+
   private async runPayment(
     plan: Plan,
     vault: Address,
@@ -119,7 +237,7 @@ export class Executor {
     const succeeded = history.find((e) => e.type === "step_succeeded");
     if (succeeded) {
       // Success is journaled only once the chain's finalized state shows it.
-      return { ...base, status: "paid", hash: succeeded.hash, note: "Already paid in an earlier run." };
+      return { ...base, status: "paid", hash: succeeded.hash, note: ALREADY_PAID_NOTE };
     }
 
     // 2. Every transaction sent earlier, newest first: while any of them could still land, never send another.
@@ -140,7 +258,7 @@ export class Executor {
         };
       }
       if (check.status === "paid" || check.status === "pending") {
-        return this.record(plan.id, index, base, check, hash, history, "Confirmed from an earlier run.");
+        return this.record(plan.id, index, base, check, hash, history, CONFIRMED_EARLIER_NOTE);
       }
       if (check.status === "not_paid") this.record(plan.id, index, base, check, hash, history);
       // Reverted, replaced or never arrived: look at the next one, then send again below.

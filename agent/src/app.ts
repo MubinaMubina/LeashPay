@@ -5,9 +5,12 @@ import { bodyLimit } from "hono/body-limit";
 import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from "viem";
 import { z } from "zod";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
-import { ConfigurationError } from "./config";
+import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
+import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegDecision, type DepegGuard } from "./depeg/guard";
+import { attachLocalAmounts, currenciesFor, type FxService } from "./fx/rates";
+import { noteForRecipient, notesForAttack, notesForRun, type Memory } from "./memory/memory";
 import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
-import { AgentBusyError, type Executor } from "./execution/executor";
+import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
 import { toJson, type PlanJson } from "./json";
 import { buildPlan, isDue, isExecutable, planLimitNotes, type Plan } from "./plan/build";
@@ -29,6 +32,14 @@ export interface AppDeps {
    * this machine only, so a web page can't reach it through a DNS name that points here.
    */
   allowedHosts?: string[];
+  /** The depeg guard (Cournot). Without it, plans keep the coins they were planned with. */
+  depeg?: DepegGuard;
+  /** Local-currency amounts (CoinMarketCap). Without it, plans show amounts in dollars only. */
+  fx?: FxService;
+  /** The agent's memory (Living Brain). Without it, plans recall nothing and nothing is saved. */
+  memory?: Memory;
+  /** Turns on POST /plans/:id/demo-attack (AGENT_DEMO_ATTACK=1). Off by default: the route answers 404. */
+  demoAttack?: boolean;
   now?: () => Date;
   newId?: () => string;
 }
@@ -59,9 +70,27 @@ function input<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
   return result.data;
 }
 
+/**
+ * The depeg guard's sentence on the plan. It becomes part of the text the owner signs, so it
+ * carries the reading's time: an old reading is visible before signing.
+ */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function depegNote(decision: DepegDecision, plan: Plan): string {
+  if (!decision.available) return `Depeg guard: ${decision.reason} The plan keeps its coins; the vault's price floor still applies.`;
+  const side = decision.chosenToken === "USDT" ? "above" : "within";
+  const read = new Date(decision.fetchedAt);
+  const at = `${read.getUTCDate()} ${MONTHS[read.getUTCMonth()]} ${decision.fetchedAt.slice(11, 16)}`;
+  const all = plan.payments.filter(isExecutable).every((p) => p.token === decision.chosenToken);
+  const coins = all ? `every payment is in ${decision.chosenToken}` : `payments are in ${decision.chosenToken} unless you named another coin`;
+  return `Depeg guard: Cournot puts USDC's depeg risk at ${percent(decision.probability)} (reading from ${at} UTC), ${side} your ${decision.threshold}% limit, so ${coins}.`;
+}
+
 const CreatePlanBody = z.object({
   owner: AddressSchema,
   message: z.string().trim().min(1).max(2000),
+  /** The owner's depeg limit in percent: above it, the guard pays in USDT instead of USDC. */
+  depegThreshold: z.number().min(0).max(100).optional(),
 });
 
 const DirectoryBody = RecipientEntrySchema.extend({ owner: AddressSchema });
@@ -162,7 +191,9 @@ export function createApp(deps: AppDeps) {
 
   app.post("/directory", async (c) => {
     const { owner, ...entry } = input(DirectoryBody, await readJson(c));
-    return c.json(deps.directory.upsert(owner, entry), 201);
+    const saved = deps.directory.upsert(owner, entry);
+    void deps.memory?.remember(noteForRecipient(owner, entry));
+    return c.json(saved, 201);
   });
 
   app.get("/vaults/:owner", async (c) => {
@@ -176,13 +207,17 @@ export function createApp(deps: AppDeps) {
   // payment is only simulated against the vault, so the owner sees its verdict.
   app.post("/plans", async (c) => {
     const body = input(CreatePlanBody, await readJson(c));
+    // Recalled while the vault is read: memory is only context for Claude, so it never holds up the chain reads.
+    const recalling = deps.memory?.recall(body.owner, body.message);
     const vault = await findVault(deps.gateway, body.owner);
     const snapshot = vault ? await deps.gateway.snapshot(vault) : null;
     const directory = deps.directory.list(body.owner);
     const at = now();
+    const recalled = recalling ? await recalling : undefined;
 
     const draft = await deps.planner({
       message: body.message,
+      memory: recalled?.available ? recalled.notes.map((n) => n.text) : undefined,
       directory,
       today: at.toISOString().slice(0, 10),
       balances: snapshot
@@ -193,7 +228,24 @@ export function createApp(deps: AppDeps) {
           }
         : undefined,
     });
-    const plan = buildPlan(draft, { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at });
+    const context = { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at };
+    let plan = buildPlan(draft, context);
+    // Asked while the depeg guard runs; each quote has both coins, so the guard's choice doesn't matter yet.
+    const fxCurrencies = plan.kind === "payment" && deps.fx ? currenciesFor(plan, directory) : [];
+    const fxQuotes = fxCurrencies.length > 0 ? deps.fx!.quotes(fxCurrencies) : null;
+    // The guard runs only for a plan that can run (a vault) and pays someone, to save Cournot quota.
+    // Its coin is applied by building again, so merging lines sees the final coin.
+    if (deps.depeg && vault && plan.kind === "payment" && plan.payments.some(isExecutable)) {
+      // The slider's precision: 0.01%.
+      const threshold = Math.round((body.depegThreshold ?? DEFAULT_THRESHOLD_PERCENT) * 100) / 100;
+      const decision = await deps.depeg.decide(threshold);
+      if (decision.available) plan = buildPlan(draft, { ...context, coin: decision.chosenToken });
+      const note = depegNote(decision, plan);
+      plan.depeg = { ...decision, note };
+      plan.notes.push(note);
+    }
+    if (fxQuotes) attachLocalAmounts(plan, directory, await fxQuotes);
+    if (recalled) plan.memory = recalled;
     if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });
@@ -264,6 +316,21 @@ export function createApp(deps: AppDeps) {
     deps.journal.append({ type: "approval_used", planId: plan.id, approval: approvalId });
 
     const results = await deps.executor.execute(plan);
+    if (deps.memory) for (const note of notesForRun(plan, results, now())) void deps.memory.remember(note);
+    return c.json(toJson({ planId: plan.id, results }));
+  });
+
+  // The live demo's attack: a payment the vault must refuse, sent without the owner's
+  // signature to play a compromised agent. It can only target DEMO_ATTACK_ADDRESS
+  // (see Executor.demoAttack), so it can never move money.
+  app.post("/plans/:id/demo-attack", async (c) => {
+    if (!deps.demoAttack) return c.json({ error: "Not found." }, 404);
+    const plan = deps.journal.plan(c.req.param("id"));
+    if (!plan) return c.json({ error: "No plan with that id." }, 404);
+    const refusal = notRunnable(c, plan);
+    if (refusal) return refusal;
+    const results = await deps.executor.demoAttack(plan, DEMO_ATTACK_ADDRESS);
+    if (deps.memory) for (const note of notesForAttack(plan, results, now())) void deps.memory.remember(note);
     return c.json(toJson({ planId: plan.id, results }));
   });
 
@@ -271,7 +338,9 @@ export function createApp(deps: AppDeps) {
     if (err instanceof BadRequestError) {
       return c.json({ error: err.message, ...(err.details === undefined ? {} : { details: err.details }) }, 400);
     }
-    if (err instanceof DirectoryRuleError || err instanceof AgentBusyError) return c.json({ error: err.message }, 409);
+    if (err instanceof DirectoryRuleError || err instanceof AgentBusyError || err instanceof AttackRefusedError) {
+      return c.json({ error: err.message }, 409);
+    }
     if (err instanceof ConfigurationError) return c.json({ error: err.message }, 503);
     if (err instanceof PlannerError) return c.json({ error: err.message }, 502);
     if (err instanceof Anthropic.AuthenticationError) {

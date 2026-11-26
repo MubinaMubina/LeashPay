@@ -43,6 +43,12 @@ export interface PayStep {
 }
 
 /** What the chain says about a pay() transaction the agent signed. */
+/** How a sent transaction ended, once its block is final; pending when that isn't known yet. */
+export interface AttackOutcome {
+  status: "reverted" | "succeeded" | "pending";
+  block: bigint | null;
+}
+
 export type PaymentCheck =
   /** In a finalized block, and the vault emitted the matching Paid event. */
   | { status: "paid"; hash: Hex }
@@ -91,4 +97,18 @@ export interface VaultGateway {
    * as made (its DuplicatePayment check). Proves a payment the journal has no hash for.
    */
   paidAsOfFinality(vault: Address, step: PayStep): Promise<boolean>;
+
+  // --- The demo attack (POST /plans/:id/demo-attack): a payment the vault must refuse, sent for real.
+
+  /** Whether the vault allowlists this recipient, read at the latest block. */
+  isAllowed(vault: Address, recipient: Address): Promise<boolean>;
+  /** Signs pay() with a fixed gas limit and no simulation. Nonces work exactly as in signPay. */
+  signPayUnchecked(vault: Address, step: PayStep, gas: bigint): Promise<SignedPayment>;
+  /** Waits for the receipt and for finality: reverted, succeeded, or still pending. */
+  waitForOutcome(hash: Hex): Promise<AttackOutcome>;
+  /**
+   * Runs the same pay() at the block before `block` and decodes the vault's refusal (null if
+   * it would have gone through). An inference about the mined transaction, not a record of it.
+   */
+  replayRevert(vault: Address, step: PayStep, block: bigint): Promise<VaultRevert | null>;
 }

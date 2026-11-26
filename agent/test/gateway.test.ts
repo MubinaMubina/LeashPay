@@ -300,3 +300,63 @@ describe("createChainClients", () => {
     expect(publicClient.pollingInterval).toBe(500);
   });
 });
+
+describe("ViemVaultGateway demo attack", () => {
+  const recipientNotAllowed = () =>
+    new ContractFunctionExecutionError(
+      new ContractFunctionRevertedError({
+        abi: leashVaultAbi,
+        data: encodeErrorResult({ abi: leashVaultAbi, errorName: "RecipientNotAllowed", args: [LINH] }),
+        functionName: "pay",
+      }),
+      { abi: leashVaultAbi, functionName: "pay", args: [] },
+    );
+
+  it("signs with the fixed gas and no simulation, through the same nonce manager as real payments", async () => {
+    const w = wallet();
+    const client = { simulateContract: vi.fn(), estimateContractGas: vi.fn() };
+    const gw = new ViemVaultGateway(client as never, w.client as never, null);
+
+    const signed = await gw.signPayUnchecked(VAULT, step, 200_000n);
+
+    expect(client.simulateContract).not.toHaveBeenCalled();
+    expect(client.estimateContractGas).not.toHaveBeenCalled();
+    expect(w.client.prepareTransactionRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ to: VAULT, gas: 200_000n, nonceManager: w.client.account.nonceManager }),
+    );
+    w.client.sendRawTransaction.mockRejectedValue(new Error("nonce too low"));
+    await expect(signed.broadcast()).rejects.toThrow("nonce too low");
+    expect(w.reset).toHaveBeenCalled();
+  });
+
+  it("replays pay() at the block before the receipt's and decodes the vault's refusal", async () => {
+    const simulateContract = vi.fn(async () => {
+      throw recipientNotAllowed();
+    });
+    const gw = new ViemVaultGateway({ simulateContract } as never, wallet().client as never, null);
+
+    expect(await gw.replayRevert(VAULT, step, 500n)).toMatchObject({ name: "RecipientNotAllowed" });
+    expect(simulateContract).toHaveBeenCalledWith(expect.objectContaining({ blockNumber: 499n, functionName: "pay" }));
+  });
+
+  it("reports a reverted transaction only once its block is final", async () => {
+    const blockHash = pad("0xb", { size: 32 }) as Hex;
+    const getBlock = vi.fn(async (args: { blockTag?: string; blockNumber?: bigint }) =>
+      args.blockTag === "finalized" ? { number: 12n } : { hash: blockHash, number: args.blockNumber },
+    );
+    const client = {
+      waitForTransactionReceipt: async () => ({ status: "reverted", blockNumber: 10n, blockHash }),
+      getBlock,
+    };
+    expect(await new ViemVaultGateway(client as never, null, null).waitForOutcome(HASH)).toEqual({ status: "reverted", block: 10n });
+  });
+
+  it("answers pending when no receipt arrives in time", async () => {
+    const client = {
+      waitForTransactionReceipt: async () => {
+        throw new WaitForTransactionReceiptTimeoutError({ hash: HASH });
+      },
+    };
+    expect(await new ViemVaultGateway(client as never, null, null).waitForOutcome(HASH)).toEqual({ status: "pending", block: null });
+  });
+});

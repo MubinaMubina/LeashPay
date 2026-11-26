@@ -8,6 +8,10 @@ import { Executor } from "./execution/executor";
 import { Journal } from "./execution/journal";
 import { lockDataDir } from "./execution/lock";
 import { RecipientDirectory } from "./plan/directory";
+import { createDepegGuard } from "./depeg/guard";
+import { createFx } from "./fx/rates";
+import { createBrainClient } from "./memory/brain";
+import { createMemory } from "./memory/memory";
 import { draftPlan } from "./plan/planner";
 
 const config = loadConfig();
@@ -20,6 +24,10 @@ const apiKey = claudeApiKey(config);
 const anthropic = new Anthropic(apiKey ? { apiKey } : {}); // no key: the SDK tries an `ant auth login` profile
 const executor = new Executor({ gateway, journal });
 const local = isLoopback(config.AGENT_HOST);
+const brain =
+  config.LIVING_BRAIN_API_KEY && config.LIVING_BRAIN_BRAIN_ID && config.LIVING_BRAIN_SUBJECT_ID
+    ? createBrainClient({ apiKey: config.LIVING_BRAIN_API_KEY, brainId: config.LIVING_BRAIN_BRAIN_ID, subjectId: config.LIVING_BRAIN_SUBJECT_ID })
+    : null;
 
 const app = createApp({
   gateway,
@@ -30,6 +38,10 @@ const app = createApp({
   apiToken: config.AGENT_API_TOKEN,
   // Only this machine can connect, so only its own names are valid in the Host header.
   allowedHosts: local ? localHostHeaders(config) : undefined,
+  demoAttack: config.AGENT_DEMO_ATTACK === "1",
+  depeg: createDepegGuard({ apiKey: config.COURNOT_API_KEY }),
+  fx: config.CMC_API_KEY ? createFx({ apiKey: config.CMC_API_KEY }) : undefined,
+  memory: brain ? createMemory({ client: brain }) : undefined,
 });
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (info) => {
@@ -39,6 +51,8 @@ serve({ fetch: app.fetch, port: config.PORT, hostname: config.AGENT_HOST }, (inf
   console.log(`  agent key:  ${gateway.agentAddress ?? "not set (AGENT_PRIVATE_KEY)"}`);
   console.log(`  factory:    ${config.FACTORY_ADDRESS ?? "not set yet (FACTORY_ADDRESS)"}`);
   console.log(`  model:      ${config.ANTHROPIC_MODEL}`);
+  console.log(`  local fx:   ${config.CMC_API_KEY ? "CoinMarketCap" : "off (CMC_API_KEY not set)"}`);
+  console.log(`  memory:     ${brain ? "Living Brain" : "off (LIVING_BRAIN_* not all set)"}`);
   if (!config.ANTHROPIC_API_KEY && config.LLM_API_KEY) {
     console.log("  note:       using LLM_API_KEY; rename it to ANTHROPIC_API_KEY in .env");
   }

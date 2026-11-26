@@ -27,7 +27,7 @@ import { bscTestnet } from "viem/chains";
 import { leashVaultAbi, leashVaultFactoryAbi } from "../abi/generated";
 import { ConfigurationError, type Config } from "../config";
 import { VaultRevertError, decodeRevert, type TokenNames, type VaultRevert } from "./errors";
-import type { DeploymentConfig, PayStep, PaymentCheck, SignedPayment, VaultGateway, VaultSnapshot } from "./gateway";
+import type { AttackOutcome, DeploymentConfig, PayStep, PaymentCheck, SignedPayment, VaultGateway, VaultSnapshot } from "./gateway";
 
 type AgentWallet = WalletClient<Transport, Chain, PrivateKeyAccount>;
 
@@ -38,6 +38,8 @@ const POLLING_INTERVAL_MS = 500;
 const RECEIPT_TIMEOUT_MS = 30_000;
 /** Headroom on the gas estimate, in case the vault's state moves between estimate and mining. */
 const GAS_HEADROOM_PERCENT = 20n;
+/** How long the demo attack waits for its block to become final after the receipt. */
+const FINALITY_WAIT_MS = 15_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -176,6 +178,18 @@ export class ViemVaultGateway implements VaultGateway {
       throw err;
     }
 
+    return this.signWithGas(vault, step, gas + (gas * GAS_HEADROOM_PERCENT) / 100n);
+  }
+
+  async signPayUnchecked(vault: Address, step: PayStep, gas: bigint): Promise<SignedPayment> {
+    return this.signWithGas(vault, step, gas);
+  }
+
+  /** Signs pay() with the given gas limit. The one place payments take a nonce, so both paths share it. */
+  private async signWithGas(vault: Address, step: PayStep, gas: bigint): Promise<SignedPayment> {
+    const wallet = this.requireWallet();
+    const { account } = wallet;
+    const call = { ...payCall(vault, step), account };
     let serializedTransaction: Hex;
     try {
       const request = await wallet.prepareTransactionRequest({
@@ -183,7 +197,7 @@ export class ViemVaultGateway implements VaultGateway {
         chain: bscTestnet,
         to: vault,
         data: encodeFunctionData({ abi: leashVaultAbi, functionName: "pay", args: call.args }),
-        gas: gas + (gas * GAS_HEADROOM_PERCENT) / 100n,
+        gas,
         nonceManager: account.nonceManager,
       });
       serializedTransaction = await wallet.signTransaction(request);
@@ -278,6 +292,53 @@ export class ViemVaultGateway implements VaultGateway {
     } catch (err) {
       const revert = decodeRevert(err);
       if (revert) return revert.name === "DuplicatePayment"; // another refusal there can't confirm it
+      throw err;
+    }
+  }
+
+  async isAllowed(vault: Address, recipient: Address): Promise<boolean> {
+    const [allowed] = await this.publicClient.readContract({
+      address: vault,
+      abi: leashVaultAbi,
+      functionName: "recipientInfo",
+      args: [recipient],
+    });
+    return allowed;
+  }
+
+  async waitForOutcome(hash: Hex): Promise<AttackOutcome> {
+    let receipt;
+    try {
+      receipt = await this.publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+    } catch (err) {
+      if (err instanceof WaitForTransactionReceiptTimeoutError) return { status: "pending", block: null };
+      throw err;
+    }
+    // Final means the finalized head has passed the receipt's block and that block is still the one it was mined in.
+    const deadline = Date.now() + FINALITY_WAIT_MS;
+    while (Date.now() < deadline) {
+      const finalized = await this.publicClient.getBlock({ blockTag: "finalized" });
+      if (finalized.number >= receipt.blockNumber) {
+        const block = await this.publicClient.getBlock({ blockNumber: receipt.blockNumber });
+        if (block.hash !== receipt.blockHash) return { status: "pending", block: null };
+        return { status: receipt.status === "success" ? "succeeded" : "reverted", block: receipt.blockNumber };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return { status: "pending", block: receipt.blockNumber };
+  }
+
+  async replayRevert(vault: Address, step: PayStep, block: bigint): Promise<VaultRevert | null> {
+    try {
+      await this.publicClient.simulateContract({
+        ...payCall(vault, step),
+        account: this.requireWallet().account,
+        blockNumber: block - 1n,
+      });
+      return null;
+    } catch (err) {
+      const revert = decodeRevert(err, await this.tokenNames());
+      if (revert) return revert;
       throw err;
     }
   }

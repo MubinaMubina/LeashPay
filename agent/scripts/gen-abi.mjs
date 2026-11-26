@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Generates src/abi/generated.ts from the frozen Solidity interfaces in
-// contracts/src/interfaces/, so the agent never hand-copies an ABI.
+// Generates the vault ABI from the frozen Solidity interfaces in
+// contracts/src/interfaces/, so neither the agent nor the web app hand-copies it.
+// It writes the same file twice: agent/src/abi/generated.ts and
+// web/lib/abi.generated.ts (each package builds on its own).
 //
-//   npm run abi         regenerate the file
-//   npm run abi:check   exit 1 if the committed file is out of date
+//   npm run abi         regenerate both files
+//   npm run abi:check   exit 1 if either committed file is out of date
 //
 // Uses solc-js pinned to 0.8.28, the compiler that produced
 // contracts/abi/frozen-signatures.txt.
@@ -14,7 +16,7 @@ import solc from "solc";
 const here = import.meta.dirname;
 const repoRoot = path.resolve(here, "../..");
 const interfacesDir = "contracts/src/interfaces";
-const outFile = path.resolve(here, "../src/abi/generated.ts");
+const outFiles = [path.resolve(here, "../src/abi/generated.ts"), path.resolve(repoRoot, "web/lib/abi.generated.ts")];
 
 // Interface name -> exported constant name.
 const EXPORTS = {
@@ -60,18 +62,25 @@ for (const [contract, exportName] of Object.entries(EXPORTS)) {
 }
 
 if (process.argv.includes("--check")) {
-  let current = "";
-  try {
-    current = readFileSync(outFile, "utf8");
-  } catch {
-    // missing file counts as out of date
+  let stale = false;
+  for (const outFile of outFiles) {
+    let current = "";
+    try {
+      current = readFileSync(outFile, "utf8");
+    } catch {
+      // missing file counts as out of date
+    }
+    if (current !== ts) {
+      console.error(`gen-abi: ${path.relative(repoRoot, outFile)} is out of date. Run \`npm run abi\` in agent/.`);
+      stale = true;
+    } else {
+      console.log(`gen-abi: ${path.relative(repoRoot, outFile)} is up to date`);
+    }
   }
-  if (current !== ts) {
-    console.error("gen-abi: src/abi/generated.ts is out of date. Run `npm run abi`.");
-    process.exit(1);
-  }
-  console.log("gen-abi: src/abi/generated.ts is up to date");
+  if (stale) process.exit(1);
 } else {
-  writeFileSync(outFile, ts);
-  console.log(`gen-abi: wrote ${path.relative(repoRoot, outFile)}`);
+  for (const outFile of outFiles) {
+    writeFileSync(outFile, ts);
+    console.log(`gen-abi: wrote ${path.relative(repoRoot, outFile)}`);
+  }
 }

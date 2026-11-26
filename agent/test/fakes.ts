@@ -5,6 +5,7 @@ import { getAddress, pad, toHex, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { VaultRevertError, describeVaultError, type VaultRevert } from "../src/chain/errors";
 import type {
+  AttackOutcome,
   DeploymentConfig,
   PayStep,
   PaymentCheck,
@@ -63,6 +64,16 @@ export class FakeGateway implements VaultGateway {
   /** Hashes of signed payments whose nonce was given back without broadcasting. */
   readonly discarded: Hex[] = [];
   vault: Address | null = VAULT;
+  /** Recipients the vault allowlists (the demo attack refuses to target these). */
+  readonly allowed = new Set<Address>();
+  /** Demo-attack transactions signed without simulation, with their gas limit. */
+  readonly unchecked: { step: PayStep; gas: bigint; hash: Hex }[] = [];
+  /** hash -> how the demo attack's transaction ends (default: reverted in block 100). */
+  readonly outcomes = new Map<Hex, AttackOutcome>();
+  /** What replaying a reverted pay() finds (default: the recipient's refusal); an Error makes the replay fail. */
+  replay: VaultRevert | null | Error | undefined;
+  /** Every signed transaction in order: its position is the nonce it took. */
+  readonly signedHashes: Hex[] = [];
   private signed = 0;
 
   async deployment(): Promise<DeploymentConfig> {
@@ -109,7 +120,38 @@ export class FakeGateway implements VaultGateway {
   async signPay(_vault: Address, step: PayStep): Promise<SignedPayment> {
     const refused = this.refusals.get(step.recipient);
     if (refused) throw new VaultRevertError(refused);
+    return this.sign(step);
+  }
+
+  async signPayUnchecked(_vault: Address, step: PayStep, gas: bigint): Promise<SignedPayment> {
+    const signed = this.sign(step);
+    this.unchecked.push({ step, gas, hash: signed.hash });
+    return signed;
+  }
+
+  async isAllowed(_vault: Address, recipient: Address): Promise<boolean> {
+    return this.allowed.has(recipient);
+  }
+
+  async waitForOutcome(hash: Hex): Promise<AttackOutcome> {
+    if (this.hold) await this.hold;
+    return this.outcomes.get(hash) ?? { status: "reverted", block: 100n };
+  }
+
+  async replayRevert(_vault: Address, step: PayStep): Promise<VaultRevert | null> {
+    if (this.replay instanceof Error) throw this.replay;
+    if (this.replay !== undefined) return this.replay;
+    return this.refusals.get(step.recipient) ?? null;
+  }
+
+  /** The hash the next signed transaction will get (for setting its outcome in advance). */
+  nextHash(): Hex {
+    return pad(toHex(this.signed + 1), { size: 32 });
+  }
+
+  private sign(step: PayStep): SignedPayment {
     const hash = pad(toHex(++this.signed), { size: 32 });
+    this.signedHashes.push(hash);
     return {
       hash,
       broadcast: async () => {

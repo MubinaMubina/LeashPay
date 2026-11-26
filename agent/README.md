@@ -2,17 +2,23 @@
 
 The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 1st"*, into a payment plan. It shows the owner what the vault will say about each payment, and once the owner approves the plan with a wallet signature, it pays through the vault with its own key. The agent plans; the vault decides. Its key can only call the vault's agent functions, so even a tricked or hacked agent stays inside the owner's rules.
 
-**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (166 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). Currency conversion (CoinMarketCap), the depeg guard (Cournot) and memory (Living Brain) are separate branches still to come.
+**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (269 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). The [depeg guard](#depeg-guard-cournot) asks Cournot before each payment plan which stablecoin to pay in, and each payment shows its [local-currency amount](#local-currency-amounts-coinmarketcap) from CoinMarketCap. The agent's [memory](#memory-living-brain) (Living Brain) recalls past payouts, preferences and attack attempts before each plan; saving new memories waits on the project's Living Brain credits (HTTP 402 on 26 Nov).
 
 ## How a payment flows
 
 ```
 owner message ──▶ POST /plans
+                    0. memory: Living Brain is searched with the message, in parallel with
+                       the vault read; this owner's notes go to Claude as data
                     1. Claude Opus 5.5, one structured call: message + the owner's
                        recipient directory + vault balance in, a typed plan draft out
-                    2. plain code checks the draft: addresses, amounts (no floats),
+                    2. the depeg guard (only when the owner has a vault and the message
+                       pays someone): Cournot's live USDC depeg risk against the owner's
+                       limit picks USDT or USDC; at the same time, CoinMarketCap's rate for
+                       each recipient's local currency (VND, PHP, THB...)
+                    3. plain code checks the draft: addresses, amounts (no floats),
                        unknown recipients, a name that doesn't match its address
-                    3. every payment is SIMULATED against the vault, in parallel: the
+                    4. every payment is SIMULATED against the vault, in parallel: the
                        owner sees the vault's verdict ("Blocked: 0xBAD… isn't on your
                        recipient list"), plus a note when the payments together exceed
                        the balance or today's limit
@@ -64,6 +70,9 @@ Requirements: Node.js 22 or newer.
 3. Fill in the root `.env`:
    - `ANTHROPIC_API_KEY`: your Claude API key. The old name `LLM_API_KEY` is still read.
    - `FACTORY_ADDRESS`: once Builder A has deployed the contracts.
+   - `COURNOT_API_KEY` (optional): Cournot's free quota works without it; once that is used up, the depeg guard needs a credited key.
+   - `CMC_API_KEY` (optional): CoinMarketCap Pro key for local-currency amounts. Without it, plans show coin amounts only.
+   - `LIVING_BRAIN_API_KEY`, `LIVING_BRAIN_BRAIN_ID`, `LIVING_BRAIN_SUBJECT_ID` (optional, all three): the agent's memory. Without them, plans recall nothing and nothing is saved.
    - `AGENT_HOST` (optional): leave it empty, or set a loopback address such as `127.0.0.1`, to stay on this machine. Any other value, such as `0.0.0.0`, also needs `AGENT_API_TOKEN`, which callers then send as `Authorization: Bearer <token>`. The token is for server-to-server calls only; never put it in the browser.
 
 4. Start the server:
@@ -84,10 +93,11 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 | `GET /directory?owner=0x…` | That owner's recipient directory (names, addresses, country, currency, preferred coin). |
 | `POST /directory` | Adds or updates one of the owner's recipients: `{ owner, name, address, country?, currency?, preferredToken? }`. Names are unique per owner, at most 60 characters, on one line; an owner keeps at most 200 recipients. |
 | `GET /vaults/:owner` | The owner's vault: owner, agent, paused, rules, today's spend and swaps, balances. 404 if they have none. |
-| `POST /plans` | `{ owner, message }` → a plan with warnings, notes and the vault's simulated verdict per payment. Sends nothing. |
+| `POST /plans` | `{ owner, message, depegThreshold? }` → a plan with warnings, notes and the vault's simulated verdict per payment. `depegThreshold` is the owner's depeg limit in percent (0 to 100, default 5); the plan's `depeg` field holds the guard's decision, each payment's `local` its amount in the recipient's currency, and `memory` what Living Brain recalled. Sends nothing. |
 | `GET /plans/:id` | The plan and every journal event for it. |
 | `GET /plans/:id/approval` | `{ message, expires, payEarly }`: the text the owner's wallet signs to run the plan, valid 10 minutes. Add `?payEarly=true` to run a dated plan before its day. |
 | `POST /plans/:id/execute` | `{ expires, signature, payEarly }` from the approval and the owner's wallet → runs the plan. Each approval runs once; to run the plan again, get and sign a fresh one. Payments that went through are never repeated, and "pending" ones are settled. |
+| `POST /plans/:id/demo-attack` | Only with `AGENT_DEMO_ATTACK=1` (otherwise 404). For the live demo: plays a compromised agent paying without the owner's signature, and shows the vault refusing it on-chain. It only targets the fixed demo address `0xBaD5…0BAD`, which the web app never allowlists. It re-checks the vault's allowlist right before signing, and answers 409 for any plan that pays anyone else, so it can never move money. It returns `[{ hash, status: "reverted" \| "pending" \| "succeeded", reason, reasonSource: "replay" \| "preview", block }]`: the reason comes from re-running the same call at the block before (`replay`), or from the plan's vault check if that fails (`preview`). |
 
 Amounts in responses are strings of 18-decimal base units (`"300000000000000000000"` is 300 USDT). Errors come back as `{ error }` with a matching status:
 
@@ -97,7 +107,7 @@ Amounts in responses are strings of 18-decimal base units (`"3000000000000000000
 | 401 | Missing API token, or an approval that is expired, already used or not signed by the plan's owner |
 | 403 | The request wasn't addressed to this machine |
 | 404 | Unknown plan or vault |
-| 409 | The agent is running another plan (try again when it finishes), the plan's date hasn't come, or the directory already has that name or 200 recipients |
+| 409 | The agent is running another plan (try again when it finishes), the plan's date hasn't come, the directory already has that name or 200 recipients, or the demo attack was asked to pay anyone but the demo address |
 | 413 / 415 | Body over 32 KB / body that isn't JSON |
 | 422 | The plan has no vault, or the message wasn't a payment request |
 | 500 | The agent's own data file is damaged (the message names it) |
@@ -120,14 +130,44 @@ curl -X POST http://localhost:8787/plans/<id>/execute \
 
 Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can run from 07:00 Bangkok time.
 
+## Depeg guard (Cournot)
+
+Before a payment plan is built, the agent asks Cournot's Intelligence Oracle one fixed claim: "Will USDC depeg below $0.98 for 24 consecutive hours by December 31, 2026?". It resolves the one matching market (title, YES outcome, the 98-cent and 24-hour wording, and settlement on 1 Jan 2027 05:00 UTC, as in `scripts/demo_oracles.py`), then reads its probability and sources.
+
+- **The coin:** above the owner's limit, every payment is in USDT, including one where the owner named USDC (that row says so). Within the limit, payments are in USDC, except where the owner named USDT. The guard's coin also replaces a recipient's saved coin preference. The risk is compared at the precision the owner reads (0.01%), so a risk that prints as equal to the limit counts as within it.
+- **What the owner sees and signs:** the plan card shows Cournot's exact claim, the probability against the limit, up to 10 sources with links, the date and time of the reading (UTC), the market id and Cournot's request id. One sentence with the probability, the reading's date and time and the chosen coin goes into the text the owner signs. It is stored apart from Claude's notes (`plan.depeg.note`), and a Claude note that starts like it is marked "From Claude:", so model text can't pass for the guard.
+- **When Cournot fails:** the plan keeps the coins it was planned with and says why ("Cournot didn't answer within 45 s.", "HTTP 402: the free quota is used up", and so on). The vault's on-chain price floor still applies. Nothing is ever guessed or mocked.
+- **Cost and speed:** both calls share one 45-second deadline, which keeps a plan inside the web page's 150-second timeout unless the Claude call itself needs its retries. One reading serves every plan for 10 minutes; after a failure, plans answer "unavailable" at once for 30 seconds. Plans with no vault, or with nothing that can be paid, don't call Cournot.
+- **The claim's deadline:** the claim ends on 31 Dec 2026. The guard keeps asking until the market settles on 1 Jan 2027 05:00 UTC, because a depeg already under way on 31 Dec can still last its 24 hours; after that it stops calling Cournot and reports "unavailable". In late December the probability also falls toward 0 because time is running out, not because USDC is safer, so the guard needs a newer market or claim before then.
+
+## Local-currency amounts (CoinMarketCap)
+
+Each payment to a saved recipient with a local currency (the directory's `currency`, such as `VND` or `PHP`; dollars are skipped) gets `local`: the amount in that currency, the rate and CoinMarketCap's quote time. The plan card shows it as "≈ 7,752,700 VND".
+
+- **The call:** CoinMarketCap Pro `v3/cryptocurrency/quotes/latest` for USDT (id 825) and USDC (id 3408), one call per currency because the plan allows one `convert` per call (1 credit each). The rate used is the one for the coin actually paid, after the depeg guard's choice. The call runs at the same time as the Cournot call, so it doesn't make the plan slower.
+- **Display only:** the vault pays the coin amount; local amounts are not in the text the owner signs.
+- **Checks:** both coins must be in the answer with a positive number price and a readable time no older than 30 minutes; anything else is refused, never guessed.
+- **Cost and failures:** one quote per currency serves every plan for 5 minutes. When CoinMarketCap fails, that payment gets `local: { currency, error }`, the card says "no VND rate", the plan is still made, and the currency isn't asked again for 30 seconds.
+
+## Memory (Living Brain)
+
+The agent's long-term memory is ChatAndBuild's Living Brain. It never decides anything and never blocks a payment.
+
+- **Recall, before each plan:** one search with the owner's message (top 20 hits) and one read of the saved notes (up to 200, cached for a minute and refreshed after each save), in parallel with the vault read. The agent gives Claude only **its own saved notes, word for word**, never the pages Living Brain compiles from them: compiled pages can mix owners. A note belongs to an owner when its `originRef` starts with `leashpay:<owner>:`, which only the agent writes, so one owner never sees another's notes, even when it was saved as their recipient. Notes behind the search hits come first, then the newest; at most 6, each cut to 600 characters. Claude receives them inside `<agent_memory>` as escaped data, with the rule that memory may only add notes for the owner (a repeat payment, an address used in an attack before) and never adds, removes or changes recipients, addresses or amounts. The plan's `memory` field holds what was recalled; the card shows it.
+- **What is saved, after the fact:** each recipient the owner saves (country, local currency, preferred coin: the details that stay off-chain), each payout with its transaction, each payment the vault refused and why, and each demo attack the vault refused. Every note names its owner and has a stable `originRef` (`leashpay:paid:<tx>` and so on). A row an earlier run already paid is not saved again, and one sent earlier but only confirmed now says so ("sent in an earlier run, confirmed on …").
+- **Failures:** saving happens in the background, one note at a time, and never delays a response. A failed save is shown on the next plan ("Saving new memories is failing: …"), and saves pause for 60 seconds instead of piling up; at most 50 wait at once, and past that a new note is dropped and logged. A failed recall gives the plan `memory: { available: false, reason }` and skips memory for 30 seconds. Each call has an 8-second deadline.
+- **Today:** on 26 Nov, searches worked and every save was refused with HTTP 402 (prepaid memory balance empty). The agent says so on each plan until the project's balance is topped up; then saves start working with no code change.
+
 ## Known limits
 
+- The depeg decision is taken when the plan is made. The signed text shows the reading's time, but a plan approved hours later still pays in the coin chosen then.
 - A dated plan doesn't run by itself on its day; someone runs it (an automatic scheduler is later work).
 - The agent runs one plan at a time: while one runs, another owner's run gets 409 and has to be retried.
 - Owners sign with plain wallets (Privy's embedded wallets are plain wallets). Smart-contract wallets aren't accepted yet.
 - If the vault is paused when a payment is retried, the vault answers "paused" before it checks for duplicates, so a payment that already went through shows as refused until the vault is unpaused and the plan runs again. It is never paid twice.
 - A transaction stuck in the mempool stays "pending", and every later transaction from the agent's key queues behind it; there is no speed-up or cancel yet.
-- The recipient directory is a JSON file per agent server, keyed by owner. Living Brain is planned to take over this memory.
+- The recipient directory is a JSON file per agent server, keyed by owner; Living Brain keeps a copy of each recipient as memory but the directory stays the source of names and addresses.
+- Owners are kept apart by the agent (from the `originRef` it writes), not by Living Brain, because the API key works for one Living Brain subject only. Recall reads the newest 200 saved notes; an owner's older notes beyond that are not recalled. A note dropped during an outage is not retried later.
 - The data-folder lock checks that the server holding it is still running. Two servers started in the same instant after a crash could both take it, and a reused process number can block a start (delete `server.lock` when no server is running).
 
 ## Code map
@@ -141,6 +181,12 @@ Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can ru
 | `src/plan/planner.ts` | The Claude call: message in, validated `PlanDraft` out |
 | `src/plan/schema.ts` | The plan schema Claude must fill |
 | `src/plan/build.ts` | Plain-code checks that turn a draft into an executable plan; due dates; plan-wide limits |
+| `src/depeg/cournot.ts` | The Cournot client: resolves the USDC depeg market, reads its probability and sources, refuses anything it can't verify |
+| `src/fx/cmc.ts` | The CoinMarketCap client: USDT and USDC in one local currency, refuses stale or partial quotes |
+| `src/fx/rates.ts` | Caches quotes per currency and attaches each payment's local amount |
+| `src/memory/brain.ts` | The Living Brain client: save a note, search, list saved notes from this brain and subject only |
+| `src/memory/memory.ts` | Recall before a plan (this owner's own saved notes only), background saves, and the notes saved for payouts, refusals, attacks and recipients |
+| `src/depeg/guard.ts` | The depeg guard: the owner's limit against Cournot's reading picks USDT or USDC; caches readings and failures |
 | `src/plan/directory.ts` | Each owner's recipient directory (`agent/data/recipients.json`, git-ignored) |
 | `src/chain/gateway.ts` | The interface for everything on-chain |
 | `src/chain/viem-gateway.ts` | Its BSC testnet implementation with viem: simulate, sign, broadcast, finality, Paid-event check |
@@ -156,9 +202,10 @@ Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can ru
 ## Tests
 
 ```bash
-npm test          # 166 tests; no API key, chain or network needed
+npm test          # 269 tests; no API key, chain or network needed
 npm run build     # type-check
 npm run abi:check # the generated ABI matches the Solidity interfaces
+npm run check:demo # the two demo messages give the plans the demo needs, 3 runs each against the real Claude (about 6 calls; needs the Claude key)
 ```
 
 The tests cover:
@@ -169,6 +216,7 @@ The tests cover:
 - the text the owner signs (flags, notes, dates, one-line names), the local signature check and one-time approvals;
 - the Claude request, including the real SDK with refusals and cut-off replies;
 - the HTTP routes: owner signatures, expiry, early payment, per-owner directories, and the network guards;
+- the demo attack: off without its flag, only ever the demo address (409 otherwise, nothing sent), the allowlist re-check, reverted, pending and unexpected-success outcomes, the replayed or preview reason, and that it shares the one-plan lock, nonce order and journal with real payments without disturbing them;
 - the journal's crash and full-disk recovery, owner-only data files, the data-folder lock, and `npm run key`'s file permissions and key detection.
 
 The vault, the chain and Claude are replaced by fakes, so a green run doesn't prove behavior against the deployed contracts or the live model.

@@ -17,6 +17,8 @@ jobs:
         if: hashFiles('agent/package.json') != ''
       - run: npm test --if-present
         if: hashFiles('agent/package.json') != ''
+      - run: npm run abi:check
+        if: hashFiles('agent/package.json') != ''
   web:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
@@ -27,6 +29,11 @@ jobs:
       - run: npm ci
         if: hashFiles('web/package.json') != ''
       - run: npm run build --if-present
+        if: hashFiles('web/package.json') != ''
+      # One web test runs the real agent app behind the proxy, so it needs the agent's packages too.
+      - run: npm ci --prefix ../agent
+        if: hashFiles('web/package.json') != ''
+      - run: npm test
         if: hashFiles('web/package.json') != ''
   atlas-relay:
     runs-on: ubuntu-latest
