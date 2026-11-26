@@ -305,6 +305,69 @@ code {
 .person small {
   color: var(--ink-3);
 }
+/* Add recipient: an inline form under the list, in the vault column's width. */
+.not-allowed {
+  color: var(--stop) !important;
+}
+.add-link {
+  margin-top: 10px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.added {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--pass-bg);
+  color: var(--pass);
+  font-size: 13px;
+}
+.add-form {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.add-form input,
+.add-form select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--panel);
+  outline: none;
+  min-width: 0;
+}
+.add-form input:focus,
+.add-form select:focus {
+  border-color: var(--ink);
+}
+.add-form .sub {
+  margin: 0;
+}
+.add-form .kill-error {
+  margin: 0;
+}
+.add-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.add-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 .status {
   display: flex;
   align-items: center;
