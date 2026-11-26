@@ -15,6 +15,7 @@ interface RunwayData {
   opening: Balances;
   plans: {
     id: string; date: string; included: boolean;
+    feesUSDT?: string;
     payments: { name: string; token: Coin; amount: string; pending: boolean }[];
   }[];
   projection: null | {
@@ -145,7 +146,8 @@ export function Runway({ runway, onPlan }: { runway: ReturnType<typeof useRunway
           <input type="checkbox" checked={saving?.planId === plan.id ? saving.included : plan.included}
             disabled={Boolean(saving)} onChange={e => void choose(plan.id, e.target.checked)} />
           <span><strong>{day(plan.date)}{plan.date < data.today && " · Overdue"}</strong>
-            {plan.payments.map((p, i) => <small key={i}>{p.name} · {amount(p.amount)} {p.token}{p.pending && " · Awaiting receipt"}</small>)}</span>
+            {plan.payments.map((p, i) => <small key={i}>{p.name} · {amount(p.amount)} {p.token}{p.pending && " · Awaiting receipt"}</small>)}
+            {plan.feesUSDT && <small>Payment fees · {amount(plan.feesUSDT)} USDT</small>}</span>
         </label>)}
       </details> : <div className="runway-empty"><p>No upcoming payouts. Give a payment a due date in chat to include it here.</p>
         <button type="button" className="link" onClick={onPlan}>Plan a payout in chat →</button></div>}

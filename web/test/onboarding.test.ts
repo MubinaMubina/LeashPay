@@ -31,6 +31,25 @@ describe("opening a LeashPay account", () => {
 });
 
 describe("optional payment activation", () => {
+  it("activates through the sponsor with no owner balance lookup or transaction", async () => {
+    readContract.mockResolvedValueOnce(zeroAddress).mockResolvedValueOnce(vault);
+    getBalance.mockResolvedValue(0n);
+    const sponsor = vi.fn().mockResolvedValue(vault);
+    expect(await activatePaymentVault(owner, send, sponsor)).toBe(vault);
+    expect(sponsor).toHaveBeenCalledExactlyOnceWith({ action: "activate" });
+    expect(getBalance).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("keeps a sponsor failure visible without asking the owner to pay gas", async () => {
+    readContract.mockResolvedValueOnce(zeroAddress);
+    getBalance.mockResolvedValue(10n ** 18n);
+    const sponsor = vi.fn().mockRejectedValue(new Error("Sponsor unavailable"));
+    await expect(activatePaymentVault(owner, send, sponsor)).rejects.toThrow("Sponsor unavailable");
+    expect(send).not.toHaveBeenCalled();
+    expect(getBalance).not.toHaveBeenCalled();
+  });
+
   it("skips the wallet prompt when the owner has zero gas", async () => {
     readContract.mockResolvedValueOnce(zeroAddress);
     getBalance.mockResolvedValueOnce(0n);

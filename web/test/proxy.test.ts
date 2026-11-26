@@ -67,6 +67,8 @@ describe("route table", () => {
       "POST /api/chat",
       "POST /api/directory/rename",
       "POST /api/directory/remove",
+      "POST /api/sponsor/prepare",
+      "POST /api/sponsor/execute",
       "POST /api/plans",
       "GET /api/plans/:id",
       "GET /api/plans/:id/approval",
@@ -100,6 +102,8 @@ describe("owner-taking routes", () => {
     { method: "POST", path: "chat", body: { message: "25 USDT", context: ["Pay Linh"] }, expectBodyOwner: true },
     { method: "POST", path: "directory/rename", body: { address: STRANGER, expectedName: "Mai", name: "Maya" }, expectBodyOwner: true },
     { method: "POST", path: "directory/remove", body: { address: STRANGER }, expectBodyOwner: true },
+    { method: "POST", path: "sponsor/prepare", body: { action: "addRecipient", recipient: STRANGER, monthlyCap: "1000000000000000000" }, expectBodyOwner: true },
+    { method: "POST", path: "sponsor/execute", body: { action: "activate", deadline: "1800000100", signature: "0x1234" }, expectBodyOwner: true },
     { method: "POST", path: "plans", body: { message: "Pay Linh 1" }, expectBodyOwner: true },
   ] as const;
 

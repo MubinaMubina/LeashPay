@@ -13,7 +13,7 @@ const { auth, wallet, api, send } = vi.hoisted(() => ({
 }));
 vi.mock("@privy-io/react-auth", () => ({ usePrivy: () => ({ ...auth, login: vi.fn(), logout: vi.fn() }) }));
 vi.mock("@/lib/client", () => ({
-  useOwnerWallet: () => wallet.current, useApi: () => api, useSendAndWait: () => send,
+  useOwnerWallet: () => wallet.current, useApi: () => api, useSendAndWait: () => send, useSponsoredAction: () => undefined,
   publicClient: { readContract: vi.fn() },
 }));
 

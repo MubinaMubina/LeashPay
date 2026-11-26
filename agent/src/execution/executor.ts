@@ -27,8 +27,10 @@ export interface PaymentResult {
 
 /** The agent's one key sends one plan at a time, so its transactions take nonces in order. */
 export class AgentBusyError extends Error {
-  constructor(vault: Address) {
-    super(`The agent is already running a plan (vault ${vault}). Try again when it finishes.`);
+  constructor(address: Address, sponsored = false) {
+    super(sponsored
+      ? `The sponsor is confirming a vault action for ${address}. Try again when it finishes.`
+      : `The agent is already running a plan (vault ${address}). Try again when it finishes.`);
     this.name = "AgentBusyError";
   }
 }
@@ -84,22 +86,34 @@ const NOT_FINAL_YET = "Sent and not final yet. Run the plan again in a moment to
  * signed first, its hash journaled, and only then broadcast, so a crash at any moment
  * leaves a hash the next run can look up on the chain. A payment counts as paid only
  * when the chain's finalized state shows it: the vault's Paid event in a finalized
- * block, or the vault refusing it as a duplicate as of the finalized block. The vault's
+ * block, plus both transfers and the fee event for V2. A V1 vault can also prove an
+ * earlier payment by refusing it as a duplicate at the finalized block. The vault's
  * DuplicatePayment rule (each plan pays each person once) is the last line of defense.
  * A refused or stuck payment doesn't stop the others.
  */
 export class Executor {
-  private running: Address | null = null;
+  private running: { address: Address; sponsored: boolean } | null = null;
 
   constructor(private readonly deps: ExecutorDeps) {}
+
+  private reserveWallet(address: Address, sponsored = false) {
+    if (this.running) throw new AgentBusyError(this.running.address, this.running.sponsored);
+    const active = { address, sponsored };
+    this.running = active;
+    return () => { if (this.running === active) this.running = null; };
+  }
+
+  /** Shares the payment/attack signer lock with one authorized owner action. */
+  reserveForSponsorship(owner: Address) {
+    return this.reserveWallet(owner, true);
+  }
 
   async execute(plan: Plan): Promise<PaymentResult[]> {
     if (!plan.vault) throw new Error("This plan has no vault, so there is nothing to execute.");
     if (!this.deps.gateway.agentAddress) {
       throw new ConfigurationError("AGENT_PRIVATE_KEY is not set in .env, so the agent can't send payments.");
     }
-    if (this.running) throw new AgentBusyError(this.running);
-    this.running = plan.vault;
+    const release = this.reserveWallet(plan.vault);
     try {
       const tokens = await this.deps.gateway.deployment();
       const results: PaymentResult[] = [];
@@ -122,7 +136,7 @@ export class Executor {
       }
       return results;
     } finally {
-      this.running = null;
+      release();
     }
   }
 
@@ -138,8 +152,7 @@ export class Executor {
     if (!this.deps.gateway.agentAddress) {
       throw new ConfigurationError("AGENT_PRIVATE_KEY is not set in .env, so the agent can't send payments.");
     }
-    if (this.running) throw new AgentBusyError(this.running);
-    this.running = plan.vault;
+    const release = this.reserveWallet(plan.vault);
     try {
       const payable = [...plan.payments.entries()].filter((entry): entry is [number, ExecutablePayment] => isExecutable(entry[1]));
       const only = payable.length === 1 ? payable[0] : undefined;
@@ -210,7 +223,7 @@ export class Executor {
         },
       ];
     } finally {
-      this.running = null;
+      release();
     }
   }
 
@@ -228,14 +241,15 @@ export class Executor {
       token: payment.token === "USDC" ? tokens.usdc : tokens.usdt,
       amount: payment.amount,
       ref: plan.ref,
+      ...(plan.paymentFee && { fee: { token: tokens.usdt, amount: BigInt(plan.paymentFee.amount), treasury: plan.paymentFee.recipient } }),
     };
 
     // 1. What happened to this payment in earlier runs?
     const history = journal
       .eventsFor(plan.id)
       .filter((e): e is StepEvent => "index" in e && e.index === index);
-    const succeeded = history.find((e) => e.type === "step_succeeded");
-    if (succeeded) {
+    const succeeded = history.findLast((e) => e.type === "step_succeeded");
+    if (succeeded && (!step.fee || succeeded.hash)) {
       // Success is journaled only once the chain's finalized state shows it.
       return { ...base, status: "paid", hash: succeeded.hash, note: ALREADY_PAID_NOTE };
     }
@@ -263,6 +277,8 @@ export class Executor {
       if (check.status === "not_paid") this.record(plan.id, index, base, check, hash, history);
       // Reverted, replaced or never arrived: look at the next one, then send again below.
     }
+    // Older agents recorded some successes from the duplicate bit alone. Look for their actual receipt.
+    if (succeeded) return this.recoverFeePayment(plan.id, index, vault, step, base);
 
     // 3. Simulate and sign. A refusal here means nothing was signed or sent.
     let signed: SignedPayment;
@@ -334,6 +350,7 @@ export class Executor {
     base: Base,
     revert: VaultRevert,
   ): Promise<PaymentResult> {
+    if (step.fee) return this.recoverFeePayment(planId, index, vault, step, base);
     let final = false;
     try {
       final = await this.deps.gateway.paidAsOfFinality(vault, step);
@@ -345,6 +362,20 @@ export class Executor {
     }
     this.deps.journal.append({ type: "step_succeeded", planId, index, hash: null, note: revert.message });
     return { ...base, status: "paid", hash: null, note: revert.message };
+  }
+
+  private async recoverFeePayment(planId: string, index: number, vault: Address, step: PayStep, base: Base): Promise<PaymentResult> {
+    let hash: Hex | null = null;
+    try {
+      hash = await this.deps.gateway.findFinalizedPayment(vault, step);
+    } catch (err) {
+      console.error(`plan ${planId}, payment ${index}: couldn't verify the finalized receipt`, describeFailure(err));
+    }
+    if (!hash) {
+      return { ...base, status: "pending", hash: null, note: "This reference was already used. The finalized receipt for the approved payout and service fee could not be verified." };
+    }
+    this.deps.journal.append({ type: "step_succeeded", planId, index, hash, note: CONFIRMED_EARLIER_NOTE });
+    return { ...base, status: "paid", hash, note: CONFIRMED_EARLIER_NOTE };
   }
 
   /** Turns the chain's answer into a result, journaling it once (only final answers are journaled). */

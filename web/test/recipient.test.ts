@@ -13,16 +13,16 @@ function reader(over: Partial<LogReader> = {}): LogReader & { paidCalls: [bigint
   const paidCalls: [bigint, bigint][] = [];
   return {
     paidCalls,
-    getBlockNumber: async () => FACTORY_DEPLOY_BLOCK + 120_000n,
-    getVaultCreatedLogs: async (_f: Address, from: bigint) => (from === FACTORY_DEPLOY_BLOCK ? [{ vault: VAULT }] : []),
+    finalizedBlock: async () => FACTORY_DEPLOY_BLOCK + 120_000n,
+    getVaultCreatedLogs: async (_f, from) => (from === FACTORY_DEPLOY_BLOCK ? [{ vault: VAULT }] : []),
     getPaidLogs: async (_r: Address, from: bigint, to: bigint) => {
       paidCalls.push([from, to]);
       if (from !== FACTORY_DEPLOY_BLOCK) return [];
       return [
-        { address: VAULT, token: USDT, amount: 1n * 10n ** 18n, ref: hash(1), hash: hash(10), block: FACTORY_DEPLOY_BLOCK + 100n },
-        { address: VAULT, token: USDT, amount: 450n * 10n ** 18n, ref: hash(2), hash: hash(11), block: FACTORY_DEPLOY_BLOCK + 900n },
+        { address: VAULT, token: USDT, amount: 1n * 10n ** 18n, ref: hash(1), hash: hash(10), block: FACTORY_DEPLOY_BLOCK + 100n, logIndex: 1 },
+        { address: VAULT, token: USDT, amount: 450n * 10n ** 18n, ref: hash(2), hash: hash(11), block: FACTORY_DEPLOY_BLOCK + 900n, logIndex: 2 },
         // The same public event emitted by a contract the factory never created.
-        { address: IMPOSTOR, token: USDT, amount: 10n ** 24n, ref: hash(3), hash: hash(12), block: FACTORY_DEPLOY_BLOCK + 950n },
+        { address: IMPOSTOR, token: USDT, amount: 10n ** 24n, ref: hash(3), hash: hash(12), block: FACTORY_DEPLOY_BLOCK + 950n, logIndex: 3 },
       ];
     },
     getBlockTimestamp: async (block) => Number(block),
@@ -42,6 +42,35 @@ describe("chunks", () => {
 });
 
 describe("GET /api/recipient/:address", () => {
+  it("shows both trusted factories' finalized receipts for the exact address and keeps distinct payouts in the same transaction", async () => {
+    const active = getAddress("0xec8339Aa64277e759475c6777D7832652a390b99");
+    const activeVault = getAddress("0x6eF72D31a0566a0f1E6437F15aF8C2325A3FDbb0");
+    const finalized = FACTORY_DEPLOY_BLOCK + 10n;
+    const legacy = { recipient: MARCO, address: VAULT, token: USDT, amount: 100n, ref: hash(1),
+      hash: hash(99), block: finalized, logIndex: 3 };
+    const sponsored = { ...legacy, address: activeVault, amount: 200n, ref: hash(2), logIndex: 5 };
+    const logs = [legacy, sponsored, sponsored, { ...legacy, address: IMPOSTOR, logIndex: 7 },
+      { ...legacy, recipient: VAULT, logIndex: 8 }, { ...sponsored, block: finalized + 1n, logIndex: 9 }];
+    const r = reader({
+      finalizedBlock: vi.fn(async () => finalized),
+      getVaultCreatedLogs: vi.fn(async filter => {
+        const factories = typeof filter === "string" ? [filter] : filter;
+        return [{ factory: FACTORY, vault: VAULT }, { factory: active, vault: activeVault }].filter(v => factories.includes(v.factory));
+      }),
+      getPaidLogs: vi.fn(async (address, from, to) => logs.filter(log => log.recipient === address && from <= log.block && log.block <= to)),
+    });
+    const response = await createRecipientHandler({ reader: r, factory: [active, FACTORY] })(MARCO);
+    expect(response.status).toBe(200);
+    const { payments } = await response.json();
+    expect(payments).toMatchObject([
+      { hash: hash(99), logIndex: 5, amount: "200", vault: activeVault },
+      { hash: hash(99), logIndex: 3, amount: "100", vault: VAULT },
+    ]);
+    expect(r.finalizedBlock).toHaveBeenCalledTimes(1);
+    expect(r.getVaultCreatedLogs).toHaveBeenCalledExactlyOnceWith([active, FACTORY], FACTORY_DEPLOY_BLOCK, finalized);
+    expect(r.getPaidLogs).toHaveBeenCalledExactlyOnceWith(MARCO, FACTORY_DEPLOY_BLOCK, finalized);
+  });
+
   it("lists payments from LeashPay vaults only, newest first, searching from the factory's deploy block", async () => {
     const r = reader();
     const response = await createRecipientHandler({ reader: r, factory: FACTORY })(MARCO.toLowerCase());
@@ -79,7 +108,7 @@ describe("GET /api/recipient/:address", () => {
   it("caches a result for 30 seconds", async () => {
     let now = 0;
     const r = reader();
-    const spy = vi.spyOn(r, "getBlockNumber");
+    const spy = vi.spyOn(r, "finalizedBlock");
     const handle = createRecipientHandler({ reader: r, factory: FACTORY, now: () => now });
     await handle(MARCO);
     await handle(MARCO);

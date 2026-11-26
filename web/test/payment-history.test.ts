@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { type Address, type Hex } from "viem";
-import { createHistoryHandler, type HistoryPage, type HistoryReader, type PaidLog } from "@/lib/payment-history";
+import { createHistoryHandler, sentPaymentsWithFees, type HistoryPage, type HistoryReader, type PaidLog } from "@/lib/payment-history";
 import { FACTORY_DEPLOY_BLOCK } from "@/lib/recipient-logs";
 
 const address = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
@@ -13,17 +13,23 @@ const unit = 10n ** 18n;
 function paid(index: number, sender = vault, recipient = friend, token: Address = usdt): PaidLog {
   return { address: sender, recipient, token, amount: unit, ref: hash(index), hash: hash(1), block, logIndex: index };
 }
-function fixture(logs: PaidLog[], sessionOwner = owner) {
+const registry = [
+  { factory, owner, vault }, { factory, owner: friend, vault: friendVault }, { factory, owner: third, vault: thirdVault },
+];
+function includesAddress(filter: Address | readonly Address[], address: Address) {
+  return (typeof filter === "string" ? [filter] : filter).includes(address);
+}
+function fixture(logs: PaidLog[], sessionOwner = owner, trusted: Address | readonly Address[] = factory, created = registry) {
   const reader: HistoryReader = {
     getTokens: vi.fn(async () => ({ usdt: usdt as Address, usdc: usdc as Address })),
     finalizedBlock: vi.fn(async () => block),
-    getVaultCreatedLogs: vi.fn(async () => [{ owner, vault }, { owner: friend, vault: friendVault }, { owner: third, vault: thirdVault }]),
-    getPaidLogs: vi.fn(async (recipients, from, to) => logs.filter(p => (Array.isArray(recipients) ? recipients : [recipients])
-      .includes(p.recipient) && from <= p.block && p.block <= to)),
-    getSentLogs: vi.fn(async (sender, from, to) => logs.filter(p => p.address === sender && from <= p.block && p.block <= to)),
+    getVaultCreatedLogs: vi.fn(async factories => created.filter(pair => includesAddress(factories, pair.factory))),
+    getPaidLogs: vi.fn(async (recipients, from, to) => logs.filter(p => includesAddress(recipients, p.recipient)
+      && from <= p.block && p.block <= to).map(p => ({ ...p, fee: undefined }))),
+    getSentLogs: vi.fn(async (senders, from, to) => logs.filter(p => includesAddress(senders, p.address) && from <= p.block && p.block <= to)),
     getBlockTimestamp: vi.fn(async () => 1_800_000_000),
   };
-  const handle = createHistoryHandler({ reader, factory, resolveOwner: async () => ({ ok: true, owner: sessionOwner }) });
+  const handle = createHistoryHandler({ reader, factory: trusted, resolveOwner: async () => ({ ok: true, owner: sessionOwner }) });
   const request = (query = "") => handle(new Request("http://localhost/api/history?" + query));
   const page = async (query = ""): Promise<HistoryPage> => {
     const response = await request(query);
@@ -34,6 +40,65 @@ function fixture(logs: PaidLog[], sessionOwner = owner) {
 }
 
 describe("confirmed LeashPay history", () => {
+  it("combines both trusted factories in one scan and keeps the net amounts and observed sender fees across pages", async () => {
+    const [newFactory, newVault, newFriendVault, outsider, foreignVault] = [11, 12, 13, 14, 15].map(address);
+    const created = [...registry, registry[0], { factory: newFactory, owner, vault: newVault },
+      { factory: newFactory, owner: friend, vault: newFriendVault }, { factory: outsider, owner: friend, vault: foreignVault }];
+    const fee = { token: usdt as Address, amount: unit / 100n };
+    const sponsored = paid(11, newVault, newFriendVault, usdc);
+    const self = paid(12, newVault, vault);
+    const legacy = Array.from({ length: 10 }, (_, i) => paid(i + 1));
+    // Two vaults can use the same ref for the same contact in one transaction.
+    legacy[0] = { ...paid(1, vault, newFriendVault), ref: sponsored.ref };
+    const sent = sentPaymentsWithFees([...legacy, sponsored, self],
+      [sponsored, self].map(log => ({ ...log, ...fee, logIndex: log.logIndex + 30 })));
+    const incoming = paid(15, friendVault, owner);
+    const { page, reader } = fixture([...sent, paid(13, friendVault, newVault, usdc),
+      { ...paid(14, newFriendVault, vault), fee }, incoming, incoming, paid(16, foreignVault, owner)],
+      owner, [newFactory, factory], created);
+
+    const first = await page();
+    expect(first.payments.map(p => p.logIndex)).toEqual([15, 14, 13, 12, 11, 10, 9, 8, 7, 6]);
+    expect(first).toMatchObject({ count: 15, next: `${block}.6`, totals: {
+      sent: { USDT: String(11n * unit), USDC: String(unit) }, received: { USDT: String(3n * unit), USDC: String(unit) },
+    } });
+    expect(first.payments.filter(p => p.fee).map(p => [p.logIndex, p.direction, p.fee])).toEqual([
+      [12, "self", { amount: String(unit / 100n), symbol: "USDT" }],
+      [11, "sent", { amount: String(unit / 100n), symbol: "USDT" }],
+    ]);
+    expect(first.payments.find(p => p.logIndex === 14)).toMatchObject({ direction: "received", wallet: friend, vault: newFriendVault });
+    const last = await page(`before=${first.next}`);
+    expect(last.payments.map(p => p.logIndex)).toEqual([5, 4, 3, 2, 1]);
+    expect(last.payments.every(p => p.fee === undefined)).toBe(true);
+    expect(last).toMatchObject({ count: 15, next: null, totals: first.totals });
+    for (const contact of [friend, friendVault, newFriendVault]) {
+      expect((await page(`contact=${contact}`)).count).toBe(14);
+    }
+    expect(reader.finalizedBlock).toHaveBeenCalledTimes(1);
+    expect(reader.getTokens).toHaveBeenCalledExactlyOnceWith(newFactory);
+    expect(reader.getVaultCreatedLogs).toHaveBeenCalledExactlyOnceWith([newFactory, factory], FACTORY_DEPLOY_BLOCK, block);
+    expect(reader.getPaidLogs).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining([owner, vault, newVault]), FACTORY_DEPLOY_BLOCK, block);
+    expect(reader.getSentLogs).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining([vault, newVault]), FACTORY_DEPLOY_BLOCK, block);
+    expect(vi.mocked(reader.getPaidLogs).mock.calls[0][0]).toHaveLength(3);
+    expect(vi.mocked(reader.getSentLogs).mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it("pairs on-chain fees with their payout and preserves net sent and received totals", async () => {
+    const outgoing = paid(1, vault, friend, usdc);
+    const charge = { ...outgoing, token: usdt as Address, amount: unit / 100n, logIndex: 2 };
+    const unrelated = { ...charge, recipient: third, amount: unit };
+    const legacy = paid(3);
+    const logs = sentPaymentsWithFees([outgoing, legacy], [charge, unrelated, { ...charge, hash: hash(2) }]);
+    const incoming = { ...paid(4, friendVault, owner), fee: { amount: unit / 100n, token: usdt as Address } };
+    const { page } = fixture([...logs, incoming]);
+    const result = await page();
+    expect(result.payments.find(p => p.logIndex === 1)).toMatchObject({ amount: String(unit), symbol: "USDC",
+      fee: { amount: String(unit / 100n), symbol: "USDT" } });
+    expect(result.payments.find(p => p.logIndex === 3)?.fee).toBeUndefined();
+    expect(result.payments.find(p => p.logIndex === 4)?.fee).toBeUndefined();
+    expect(result.totals).toEqual({ sent: { USDT: String(unit), USDC: String(unit) }, received: { USDT: String(unit), USDC: "0" } });
+  });
+
   it("keeps only finalized payments involving this owner and issued by a factory vault", async () => {
     const { page, reader } = fixture([paid(1), paid(2, friendVault, owner, usdc), paid(3, friendVault, vault),
       paid(4, thirdVault, friend), paid(5, address(99), owner), { ...paid(6), block: block + 1n }]);
@@ -112,6 +177,12 @@ describe("confirmed LeashPay history", () => {
     const response = await handle(new Request("http://localhost/api/history"));
     expect(response.status).toBe(401);
     expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+  it("fails closed before issuing an unscoped query when the trusted factory set is empty", async () => {
+    const { request, reader } = fixture([paid(1)], owner, []);
+    expect((await request()).status).toBe(502);
+    expect(reader.getVaultCreatedLogs).not.toHaveBeenCalled();
+    expect(reader.getPaidLogs).not.toHaveBeenCalled();
   });
   it("recovers from an RPC failure without presenting an empty history or leaking the RPC key", async () => {
     const { page, request, reader } = fixture([paid(1)]);

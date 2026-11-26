@@ -14,11 +14,16 @@ import { createFx } from "./fx/rates";
 import { createBrainClient } from "./memory/brain";
 import { createMemory } from "./memory/memory";
 import { draftPlan } from "./plan/planner";
+import { ViemSponsorChain } from "./sponsor/chain";
+import { SponsorshipService } from "./sponsor/service";
 
 const config = loadConfig();
 lockDataDir(config.DATA_DIR); // one server per data folder
 const { publicClient, walletClient } = createChainClients(config);
-const gateway = new ViemVaultGateway(publicClient, walletClient, config.FACTORY_ADDRESS ?? null);
+const gateway = new ViemVaultGateway(publicClient, walletClient, config.FACTORY_ADDRESS ?? null, Boolean(config.SPONSORED_FACTORY_ADDRESS));
+const sponsor = config.SPONSORED_FACTORY_ADDRESS && walletClient
+  ? new SponsorshipService(new ViemSponsorChain(publicClient, walletClient, config.SPONSORED_FACTORY_ADDRESS), path.join(config.DATA_DIR, "sponsorships.json"))
+  : undefined;
 const journal = new Journal(path.join(config.DATA_DIR, "journal.jsonl"));
 const directory = new RecipientDirectory(path.join(config.DATA_DIR, "recipients.json"));
 const apiKey = claudeApiKey(config);
@@ -32,6 +37,7 @@ const brain =
 
 const app = createApp({
   gateway,
+  sponsor,
   planner: (input) => draftPlan(anthropic, config.ANTHROPIC_MODEL, input),
   chat: (input) => selectChatCard(anthropic, config.ANTHROPIC_MODEL, input),
   directory,

@@ -3,7 +3,7 @@ import type { LocalAmount } from "../fx/rates";
 import type { Recall } from "../memory/memory";
 import { formatUnits, getAddress, isAddress, keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
 import type { VaultRevert } from "../chain/errors";
-import type { VaultSnapshot } from "../chain/gateway";
+import type { PaymentFee, VaultSnapshot } from "../chain/gateway";
 import { oneLine } from "../validation";
 import type { RecipientEntry, TokenSymbol } from "./directory";
 import type { PlanDraft } from "./schema";
@@ -32,6 +32,8 @@ export interface Plan {
   /** "now", a UTC calendar day (YYYY-MM-DD), or Claude's text when it wasn't a readable date. */
   scheduledFor: string;
   payments: PlannedPayment[];
+  /** Terms read from this vault when the plan was created. V1 vaults have no service fee. */
+  paymentFee?: PaymentFee;
   notes: string[];
   createdAt: string;
   /**
@@ -255,14 +257,15 @@ export function planLimitNotes(plan: Plan, snapshot: VaultSnapshot): string[] {
   const going = plan.payments.filter((p): p is ExecutablePayment => isExecutable(p) && !p.preview);
   const fmt = (value: bigint) => formatUnits(value, 18);
   const notes: string[] = [];
+  const fees = BigInt(plan.paymentFee?.amount ?? "0") * BigInt(going.length);
   for (const token of ["USDT", "USDC"] as const) {
-    const need = going.filter((p) => p.token === token).reduce((sum, p) => sum + p.amount, 0n);
+    const need = going.filter((p) => p.token === token).reduce((sum, p) => sum + p.amount, token === "USDT" ? fees : 0n);
     const have = snapshot.balances[token];
     if (need > have) {
       notes.push(`Together these payments need ${fmt(need)} ${token}, but the vault holds ${fmt(have)} ${token}. The last ones will be refused.`);
     }
   }
-  const total = going.reduce((sum, p) => sum + p.amount, 0n);
+  const total = going.reduce((sum, p) => sum + p.amount, fees);
   const left = snapshot.rules.dailyCap > snapshot.spentToday ? snapshot.rules.dailyCap - snapshot.spentToday : 0n;
   if (total > left) {
     notes.push(`Together these payments total $${fmt(total)}, more than the $${fmt(left)} left in today's limit. The last ones will be refused.`);

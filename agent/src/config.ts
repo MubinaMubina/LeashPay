@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { getAddress, type Hex } from "viem";
+import { getAddress, zeroAddress, type Hex } from "viem";
 import { z } from "zod";
 import { AddressSchema } from "./validation";
 
@@ -22,6 +22,8 @@ const EnvSchema = z.object({
   AGENT_HOST: z.preprocess(emptyToUndefined, z.string().trim().min(1).default("127.0.0.1")),
   BSC_TESTNET_RPC_URL: z.url().default("https://data-seed-prebsc-1-s1.bnbchain.org:8545"),
   FACTORY_ADDRESS: z.preprocess(emptyToUndefined, AddressSchema.optional()),
+  /** Opt in only on the separate signed-action factory deployment. */
+  SPONSORED_FACTORY_ADDRESS: z.preprocess(emptyToUndefined, AddressSchema.optional()),
   AGENT_PRIVATE_KEY: z.preprocess(emptyToUndefined, privateKey.optional()),
   ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   /** The old name of ANTHROPIC_API_KEY (main's .env.example), still read so existing .env files keep working. */
@@ -84,6 +86,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid agent configuration in .env:\n${z.prettifyError(parsed.error)}`);
   }
   const config = parsed.data;
+  if (config.SPONSORED_FACTORY_ADDRESS && (config.SPONSORED_FACTORY_ADDRESS === zeroAddress || config.SPONSORED_FACTORY_ADDRESS !== config.FACTORY_ADDRESS)) {
+    throw new Error("SPONSORED_FACTORY_ADDRESS must be nonzero and match FACTORY_ADDRESS on the sponsored deployment.");
+  }
   if (!isLoopback(config.AGENT_HOST) && !config.AGENT_API_TOKEN) {
     throw new Error(
       `AGENT_HOST=${config.AGENT_HOST} lets other machines reach the agent, and the agent can move money. ` +

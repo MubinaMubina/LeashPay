@@ -55,6 +55,8 @@ export interface PlanJson {
   kind: string;
   scheduledFor: string;
   payments: PaymentJson[];
+  /** Immutable fee quote from this plan's vault, in 18-decimal USDT base units. */
+  paymentFee?: { token: "USDT"; amount: string; recipient: string };
   notes: string[];
   createdAt: string;
   /** The depeg guard's decision (Cournot), when it ran. */
@@ -93,7 +95,8 @@ export interface RowStatus {
 /** After this long without a final event, "Sending…" becomes "Still confirming…". */
 export const SLOW_AFTER_MS = 5_000;
 
-export const isExecutable = (payment: PaymentJson) => Boolean(payment.recipient && payment.amount);
+export const isExecutable = (payment: PaymentJson): payment is PaymentJson & { recipient: string; amount: string } =>
+  Boolean(payment.recipient && payment.amount);
 
 const errorDetail = (error: VaultRevertJson | string) => (typeof error === "string" ? error : error.message);
 const errorName = (error: VaultRevertJson | string) => (typeof error === "string" ? "Failed" : `Refused: ${error.name}`);
@@ -148,6 +151,20 @@ export function formatTokenAmount(raw: string) {
   const [whole, fraction] = formatUnits(BigInt(raw), 18).split(".");
   const grouped = BigInt(whole).toLocaleString("en-US");
   return fraction ? `${grouped}.${fraction}` : grouped;
+}
+
+/** The agent has already combined repeats and left held-back lines without an amount or recipient. */
+export function payoutTotals(payments: readonly PaymentJson[], fee: PlanJson["paymentFee"]) {
+  const payouts = { USDT: 0n, USDC: 0n };
+  const executable = payments.filter(isExecutable);
+  for (const payment of executable) payouts[payment.token] += BigInt(payment.amount);
+  const fees = BigInt(fee?.amount ?? "0") * BigInt(executable.length);
+  return { payouts, fees, debit: { USDT: payouts.USDT + fees, USDC: payouts.USDC } };
+}
+
+export function formatTotals(totals: Record<PaymentJson["token"], bigint>) {
+  const amounts = (["USDT", "USDC"] as const).filter(token => totals[token] > 0n);
+  return amounts.map(token => `${formatTokenAmount(String(totals[token]))} ${token}`).join(" + ") || "0 USDT";
 }
 
 /** The currency's own decimals: none for VND, two for PHP and THB. */

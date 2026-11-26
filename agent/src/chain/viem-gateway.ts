@@ -1,5 +1,7 @@
 import {
   BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
   TransactionNotFoundError,
   TransactionReceiptNotFoundError,
   WaitForTransactionReceiptTimeoutError,
@@ -7,10 +9,12 @@ import {
   createWalletClient,
   encodeFunctionData,
   erc20Abi,
+  getAbiItem,
   http,
   isAddressEqual,
   keccak256,
   nonceManager,
+  parseAbi,
   parseEventLogs,
   zeroAddress,
   type Address,
@@ -27,7 +31,34 @@ import { bscTestnet } from "viem/chains";
 import { leashVaultAbi, leashVaultFactoryAbi } from "../abi/generated";
 import { ConfigurationError, type Config } from "../config";
 import { VaultRevertError, decodeRevert, type TokenNames, type VaultRevert } from "./errors";
-import type { AttackOutcome, DeploymentConfig, PayStep, PaymentCheck, SignedPayment, VaultGateway, VaultSnapshot } from "./gateway";
+import { PAYMENT_FEE_UNITS, type AttackOutcome, type DeploymentConfig, type PayStep, type PaymentCheck, type PaymentFee, type SignedPayment, type VaultGateway, type VaultSnapshot } from "./gateway";
+
+const feeAbi = parseAbi([
+  "function paymentTerms() view returns (address feeToken, address feeRecipient, uint256 feeAmount)",
+  "event PaymentFeeCharged(address indexed recipient, address indexed token, uint256 amount, bytes32 indexed ref)",
+]);
+
+// These immutable BSC testnet factories share the same tokens and default agent.
+const LEGACY_FACTORY_97: Address = "0x80b66347374C6df4f157368497201aa63a371f60";
+const SPONSORED_FACTORY_97: Address = "0xec8339Aa64277e759475c6777D7832652a390b99";
+
+export function publishedLegacyFactory(factory: Address | null): Address | null {
+  return factory && isAddressEqual(factory, SPONSORED_FACTORY_97) ? LEGACY_FACTORY_97 : null;
+}
+
+/** A failed registry read leaves the owner's vault unknown and propagates to the caller. */
+export async function registeredVault(
+  client: PublicClient, factory: Address, legacyFactory: Address | null, owner: Address, blockNumber?: bigint,
+): Promise<{ vault: Address; factory: Address } | null> {
+  const read = (address: Address) => client.readContract({
+    address, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner], blockNumber,
+  });
+  const vault = await read(factory);
+  if (vault !== zeroAddress) return { vault, factory };
+  if (!legacyFactory) return null;
+  const original = await read(legacyFactory);
+  return original === zeroAddress ? null : { vault: original, factory: legacyFactory };
+}
 
 type AgentWallet = WalletClient<Transport, Chain, PrivateKeyAccount>;
 
@@ -40,6 +71,9 @@ const RECEIPT_TIMEOUT_MS = 30_000;
 const GAS_HEADROOM_PERCENT = 20n;
 /** How long the demo attack waits for its block to become final after the receipt. */
 const FINALITY_WAIT_MS = 15_000;
+// Known transaction hashes are checked directly at any age. Only recovery without a usable hash scans logs.
+const RECOVERY_PAGE_BLOCKS = 500n;
+const RECOVERY_MAX_PAGES = 4;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -63,7 +97,7 @@ export function createChainClients(config: Pick<Config, "BSC_TESTNET_RPC_URL" | 
  * Decides whether a mined transaction made this payment. A receipt alone isn't
  * enough: if another transaction from the agent key took the same nonce, viem
  * hands back that replacement's receipt. Only the vault's own Paid event for this
- * exact recipient, token, amount and ref counts.
+ * exact recipient, token, amount and ref counts. Paid V2 steps also need both token transfers and the fee event.
  */
 export function judgePayment(
   vault: Address,
@@ -73,7 +107,7 @@ export function judgePayment(
   if (receipt.status !== "success") {
     return { status: "not_paid", hash: receipt.transactionHash, reason: "The transaction reverted on-chain." };
   }
-  const paid = parseEventLogs({ abi: leashVaultAbi, eventName: "Paid", logs: receipt.logs }).some(
+  const paid = parseEventLogs({ abi: leashVaultAbi, eventName: "Paid", logs: receipt.logs }).find(
     (log) =>
       isAddressEqual(log.address, vault) &&
       isAddressEqual(log.args.recipient, step.recipient) &&
@@ -81,9 +115,34 @@ export function judgePayment(
       log.args.amount === step.amount &&
       log.args.ref.toLowerCase() === step.ref.toLowerCase(),
   );
-  return paid
-    ? { status: "paid", hash: receipt.transactionHash }
-    : { status: "not_paid", hash: receipt.transactionHash, reason: "The transaction went through without making this payment." };
+  if (!paid) {
+    return { status: "not_paid", hash: receipt.transactionHash, reason: "The transaction went through without making this payment." };
+  }
+  const fee = step.fee;
+  if (fee) {
+    const charged = parseEventLogs({ abi: feeAbi, eventName: "PaymentFeeCharged", logs: receipt.logs }).find(
+      (log) => isAddressEqual(log.address, vault) && isAddressEqual(log.args.recipient, step.recipient) &&
+        isAddressEqual(log.args.token, fee.token) && log.args.amount === fee.amount &&
+        log.args.ref.toLowerCase() === step.ref.toLowerCase(),
+    );
+    const paidAt = paid.logIndex;
+    const chargedAt = charged?.logIndex;
+    const mismatch = { status: "not_paid" as const, hash: receipt.transactionHash, reason: "The vault receipt does not match the approved payout and service fee." };
+    if (paidAt == null || chargedAt == null) return mismatch;
+    const outgoing = parseEventLogs({ abi: erc20Abi, eventName: "Transfer", logs: receipt.logs })
+      .filter((log) => isAddressEqual(log.args.from, vault));
+    // V2 emits Paid immediately after the payout, then transfers the fee before emitting PaymentFeeCharged.
+    // This distinguishes the two transfers even if the treasury itself receives an identical USDT payout.
+    const payout = outgoing.findLast((log) => log.logIndex != null && log.logIndex < paidAt);
+    const fees = outgoing.filter((log) => log.logIndex != null && log.logIndex > paidAt && log.logIndex < chargedAt);
+    const [transfer] = fees;
+    const payoutMatches = payout && isAddressEqual(payout.address, step.token) &&
+      isAddressEqual(payout.args.to, step.recipient) && payout.args.value === step.amount;
+    const feeMatches = fees.length === 1 && transfer && isAddressEqual(transfer.address, fee.token) &&
+      isAddressEqual(transfer.args.to, fee.treasury) && transfer.args.value === fee.amount;
+    if (!payoutMatches || !feeMatches) return mismatch;
+  }
+  return { status: "paid", hash: receipt.transactionHash };
 }
 
 export class ViemVaultGateway implements VaultGateway {
@@ -93,6 +152,8 @@ export class ViemVaultGateway implements VaultGateway {
     private readonly publicClient: PublicClient,
     private readonly walletClient: AgentWallet | null,
     private readonly factory: Address | null,
+    private readonly requirePaymentTerms = false,
+    private readonly legacyFactory = publishedLegacyFactory(factory),
   ) {}
 
   get agentAddress(): Address | null {
@@ -112,13 +173,40 @@ export class ViemVaultGateway implements VaultGateway {
   }
 
   async vaultOf(owner: Address): Promise<Address | null> {
-    const vault = await this.publicClient.readContract({
-      address: this.requireFactory(),
-      abi: leashVaultFactoryAbi,
-      functionName: "vaultOf",
-      args: [owner],
-    });
-    return vault === zeroAddress ? null : vault;
+    const registered = await registeredVault(this.publicClient, this.requireFactory(), this.legacyFactory, owner);
+    return registered?.vault ?? null;
+  }
+
+  async paymentFee(vault: Address, owner?: Address): Promise<PaymentFee | undefined> {
+    if (this.legacyFactory) {
+      const factory = this.requireFactory();
+      const account = owner ?? await this.publicClient.readContract({ address: vault, abi: leashVaultAbi, functionName: "owner" });
+      const registered = await registeredVault(this.publicClient, factory, this.legacyFactory, account);
+      if (!registered || !isAddressEqual(vault, registered.vault)) {
+        throw new ConfigurationError("This vault does not match the owner's registered vault. Request a new plan.");
+      }
+      if (!isAddressEqual(registered.factory, factory)) return undefined;
+    } else if (!this.requirePaymentTerms && this.factory && isAddressEqual(this.factory, LEGACY_FACTORY_97)) {
+      return undefined;
+    }
+    let terms: readonly [Address, Address, bigint];
+    try {
+      terms = await this.publicClient.readContract({ address: vault, abi: feeAbi, functionName: "paymentTerms" });
+    } catch (err) {
+      // The original vault has no paymentTerms selector. Only a definite empty contract response
+      // identifies this interface as absent. A failed RPC must never turn a fee-bearing plan into a free one.
+      const absent = err instanceof BaseError && err.walk((e) => e instanceof ContractFunctionZeroDataError ||
+        (e instanceof ContractFunctionRevertedError && !e.data && (!e.raw || e.raw === "0x") &&
+          (!e.reason || /^execution reverted\.?$/i.test(e.reason))));
+      if (absent && !this.requirePaymentTerms && !this.legacyFactory) return undefined;
+      throw err;
+    }
+    const [token, recipient, amount] = terms;
+    const { usdt } = await this.deployment();
+    if (!isAddressEqual(token, usdt) || isAddressEqual(recipient, zeroAddress) || amount !== PAYMENT_FEE_UNITS) {
+      throw new ConfigurationError("This vault reports unsupported payment fees. Create a plan against the configured LeashPay vault.");
+    }
+    return { token: "USDT", amount: amount.toString(), recipient };
   }
 
   async snapshot(vault: Address): Promise<VaultSnapshot> {
@@ -294,6 +382,28 @@ export class ViemVaultGateway implements VaultGateway {
       if (revert) return revert.name === "DuplicatePayment"; // another refusal there can't confirm it
       throw err;
     }
+  }
+
+  async findFinalizedPayment(vault: Address, step: PayStep): Promise<Hex | null> {
+    const finalized = await this.publicClient.getBlock({ blockTag: "finalized" });
+    let toBlock = finalized.number;
+    for (let page = 0; page < RECOVERY_MAX_PAGES; page++) {
+      const fromBlock = toBlock >= RECOVERY_PAGE_BLOCKS ? toBlock - RECOVERY_PAGE_BLOCKS + 1n : 0n;
+      const logs = await this.publicClient.getLogs({
+        address: vault,
+        event: getAbiItem({ abi: leashVaultAbi, name: "Paid" }),
+        args: { recipient: step.recipient, token: step.token, ref: step.ref },
+        fromBlock, toBlock, strict: true,
+      });
+      const payment = logs.find((log) => !log.removed && log.args.amount === step.amount);
+      if (payment?.transactionHash) {
+        const result = await this.checkPayment(vault, step, payment.transactionHash);
+        return result.status === "paid" ? result.hash : null;
+      }
+      if (fromBlock === 0n) break;
+      toBlock = fromBlock - 1n;
+    }
+    return null;
   }
 
   async isAllowed(vault: Address, recipient: Address): Promise<boolean> {

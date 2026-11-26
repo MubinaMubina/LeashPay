@@ -1,9 +1,10 @@
 "use client";
 
-import { usePrivy, useSendTransaction, useWallets } from "@privy-io/react-auth";
+import { usePrivy, useSendTransaction, useSignTypedData, useWallets } from "@privy-io/react-auth";
 import { useCallback } from "react";
-import { createPublicClient, http, type Address, type Hex, type TransactionReceipt } from "viem";
-import { chain } from "./chain";
+import { createPublicClient, getAddress, http, type Address, type Hex, type TransactionReceipt } from "viem";
+import { chain, SPONSORED_SETUP } from "./chain";
+import { runSponsoredAction, type SponsorAction, type SponsoredActionRunner } from "./sponsorship";
 
 /** Read-only chain access from the browser (eth_call works on the public RPC; log search doesn't). */
 export const publicClient = createPublicClient({ chain, transport: http(), pollingInterval: 500 });
@@ -52,16 +53,32 @@ export function useSendAndWait() {
   const { sendTransaction } = useSendTransaction();
   const owner = useOwnerWallet();
   return useCallback(
-    async (to: Address, data: Hex, options?: { nonce: number; checkReceipt: (receipt: TransactionReceipt) => void }): Promise<Hex> => {
+    async (to: Address, data: Hex, options?: {
+      nonce?: number; checkReceipt?: (receipt: TransactionReceipt) => void; ownerPaidDescription?: string;
+    }): Promise<Hex> => {
       if (!owner) throw new Error("Your wallet isn't ready yet.");
-      const { hash } = await sendTransaction({ to, data, chainId: chain.id, nonce: options?.nonce }, { address: owner.address });
+      const { hash } = await sendTransaction({ to, data, chainId: chain.id, nonce: options?.nonce }, {
+        address: owner.address,
+        ...(options?.ownerPaidDescription && { sponsor: false, uiOptions: { showWalletUIs: true, description: options.ownerPaidDescription } }),
+      });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000 });
       if (receipt.status !== "success") throw new Error(`The transaction failed on-chain: ${hash}`);
-      options?.checkReceipt(receipt);
+      options?.checkReceipt?.(receipt);
       return hash;
     },
     [sendTransaction, owner],
   );
+}
+
+export function useSponsoredAction(): SponsoredActionRunner | undefined {
+  const api = useApi();
+  const owner = useOwnerWallet()?.address;
+  const { signTypedData } = useSignTypedData();
+  const sponsor = useCallback(async (action: SponsorAction) => {
+    if (!owner) throw new Error("Your wallet isn't ready yet.");
+    return runSponsoredAction(getAddress(owner), action, api, signTypedData);
+  }, [api, owner, signTypedData]);
+  return SPONSORED_SETUP ? sponsor : undefined;
 }
 
 /** A readable message from anything thrown by Privy, viem or fetch. */

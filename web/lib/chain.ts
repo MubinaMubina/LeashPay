@@ -1,16 +1,34 @@
-import { getAddress, type Address } from "viem";
+import { getAddress, isAddress, isAddressEqual, type Address } from "viem";
 import { bscTestnet } from "viem/chains";
 
 /** LeashPay runs on BSC testnet only (chain 97). */
 export const chain = bscTestnet;
 
-/**
- * The factory every owner's vault comes from. Set NEXT_PUBLIC_FACTORY_ADDRESS in the
- * root .env; the value below is the chain 97 deployment in contracts/deployments/97.json.
- */
+// Published chain 97 deployments. The web and agent are independently deployable.
+export const LEGACY_FACTORY_97: Address = "0x80b66347374C6df4f157368497201aa63a371f60";
+export const SPONSORED_FACTORY_97: Address = "0xec8339Aa64277e759475c6777D7832652a390b99";
+
+/** New vaults are created only at the explicitly selected factory. */
 export const FACTORY_ADDRESS: Address = getAddress(
-  process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "0x80b66347374C6df4f157368497201aa63a371f60",
+  process.env.NEXT_PUBLIC_FACTORY_ADDRESS || LEGACY_FACTORY_97,
 );
+
+export function vaultFactories(factory: Address): readonly Address[] {
+  return isAddressEqual(factory, SPONSORED_FACTORY_97) ? [factory, LEGACY_FACTORY_97] : [factory];
+}
+
+export const VAULT_FACTORIES = vaultFactories(FACTORY_ADDRESS);
+
+export function sponsoredSetupEnabled(factory: Address, setting: string | undefined): boolean {
+  const sponsor = setting?.trim();
+  if (!sponsor) return false;
+  if (!isAddress(sponsor, { strict: false }) || sponsor.toLowerCase() !== factory.toLowerCase()) {
+    throw new Error("NEXT_PUBLIC_SPONSORED_FACTORY_ADDRESS must be a valid address matching NEXT_PUBLIC_FACTORY_ADDRESS.");
+  }
+  return !isAddressEqual(factory, LEGACY_FACTORY_97);
+}
+
+export const SPONSORED_SETUP = sponsoredSetupEnabled(FACTORY_ADDRESS, process.env.NEXT_PUBLIC_SPONSORED_FACTORY_ADDRESS);
 
 export const explorerTx = (hash: string) => `https://testnet.bscscan.com/tx/${hash}`;
 export const explorerAddress = (address: string) => `https://testnet.bscscan.com/address/${address}`;

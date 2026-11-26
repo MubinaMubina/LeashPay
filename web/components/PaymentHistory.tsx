@@ -108,6 +108,7 @@ export function PaymentList({ filter = "all", directory = [], contact, fresh = f
           <div className="payment-party"><strong>{label}</strong><small>{date ?
             <time dateTime={date.toISOString()}>{timestamp.format(date)}</time> : `Block ${p.block}`}</small></div>
           <div className="payment-receipt"><strong>{p.direction === "sent" ? "−" : p.direction === "received" ? "+" : ""}{formatTokenAmount(p.amount)} {p.symbol}</strong>
+            {p.fee && <small>{formatTokenAmount(p.fee.amount)} {p.fee.symbol} fee</small>}
             <a href={explorerTx(p.hash)} target="_blank" rel="noreferrer" aria-label={`BscScan receipt for ${label}, ${formatTokenAmount(p.amount)} ${p.symbol}`}>Receipt ↗</a></div>
         </li>;
       })}

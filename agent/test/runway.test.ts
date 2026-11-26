@@ -25,6 +25,18 @@ async function read(events: JournalEvent[]) {
 }
 
 describe("30-day vault runway", () => {
+  it("projects each unpaid sponsored fee in USDT and preserves the fee-free legacy debit", async () => {
+    const paymentFee = { token: "USDT" as const, amount: String(10n ** 16n), recipient: OWNER };
+    const payments = [pay("2"), { ...pay("3", "USDT"), recipient: STRANGER_ACCOUNT.address }];
+    const events = [created("sponsored", "2026-12-27", payments, { paymentFee }), select("sponsored"),
+      created("legacy", "2026-12-27", [pay("1", "USDT")]), select("legacy")];
+    const result = await read(events);
+    expect(result.projection?.weeks[0]?.due).toEqual({ USDC: 2n, USDT: 4n + 2n * 10n ** 16n });
+    expect(result.plans.find(plan => plan.id === "sponsored")).toMatchObject({ feesUSDT: String(2n * 10n ** 16n) });
+    const partial = await read([...events, { type: "step_succeeded", at, planId: "sponsored", index: 0, hash }]);
+    expect(partial.projection?.weeks[0]?.due).toEqual({ USDC: 0n, USDT: 4n + 10n ** 16n });
+  });
+
   it("uses 30 UTC calendar dates, including today and a two-day final period; isolates dated plans by owner and vault", async () => {
     const forecast = await read([
       created("today", "2026-12-26"), created("last", "2027-01-24"), created("outside", "2027-01-25"),

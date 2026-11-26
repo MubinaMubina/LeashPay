@@ -55,9 +55,12 @@ export function buildRunway(events: readonly JournalEvent[], owner: Address, vau
       !paid.has(i) && p.recipient && p.amount !== null && BigInt(p.amount) > 0n
         ? [{ name: p.recipientName, amount: p.amount, token: p.token, pending: pending.has(i) }] : []);
     if (!payments.length) continue;
-    plans.push({ id: plan.id, date: plan.scheduledFor, included, payments });
+    const feesUSDT = BigInt(plan.paymentFee?.amount ?? 0) * BigInt(payments.length);
+    plans.push({ id: plan.id, date: plan.scheduledFor, included, payments,
+      ...(feesUSDT > 0n && { feesUSDT: feesUSDT.toString() }) });
     if (!included) continue;
     const day = Math.max(0, (Date.parse(plan.scheduledFor) - start) / DAY_MS);
+    outflows[day]!.USDT += feesUSDT;
     for (const payment of payments) {
       if (payment.pending) awaitingReceipt = true;
       outflows[day]![payment.token] += BigInt(payment.amount);

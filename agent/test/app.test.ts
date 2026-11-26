@@ -1,16 +1,17 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { HttpRequestError } from "viem";
+import { HttpRequestError, zeroAddress, type Address } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, type AppDeps } from "../src/app";
+import { ViemVaultGateway } from "../src/chain/viem-gateway";
 import { ConfigurationError } from "../src/config";
 import { APPROVAL_TTL_MS } from "../src/execution/approval";
 import { Executor } from "../src/execution/executor";
 import { Journal } from "../src/execution/journal";
 import { DirectoryRuleError, MAX_RECIPIENTS, RecipientDirectory } from "../src/plan/directory";
 import type { PlanDraft } from "../src/plan/schema";
-import { ATTACKER, FakeGateway, LINH, MARCO, OWNER, OWNER_ACCOUNT, STRANGER_ACCOUNT, refusal, tempDir } from "./fakes";
+import { ATTACKER, FakeGateway, LINH, MARCO, OWNER, OWNER_ACCOUNT, STRANGER_ACCOUNT, USDT, VAULT, refusal, tempDir } from "./fakes";
 
 const payDraft: PlanDraft = {
   kind: "payment",
@@ -29,8 +30,8 @@ let planner: ReturnType<typeof vi.fn>;
 let dataDir: string;
 let ids: number;
 
-function app(options: Pick<AppDeps, "apiToken" | "allowedHosts" | "now" | "chat"> = {}) {
-  dataDir = tempDir();
+function app(options: Pick<AppDeps, "apiToken" | "allowedHosts" | "now" | "chat"> = {}, storedData = tempDir()) {
+  dataDir = storedData;
   const journal = new Journal(path.join(dataDir, "journal.jsonl"));
   const directory = new RecipientDirectory(path.join(dataDir, "recipients.json"));
   directory.upsert(OWNER, { name: "Linh", address: LINH });
@@ -67,6 +68,75 @@ async function approve(api: Api, planId: string, { payEarly = false, account = O
 }
 
 const execute = (api: Api, planId: string, body: unknown) => api.request(`/plans/${planId}/execute`, json(body));
+
+describe("fee-bearing approvals", () => {
+  const fee = { token: "USDT" as const, amount: "10000000000000000", recipient: MARCO };
+
+  it("executes the original signed V1 plan after restarting with the V2 factory", async () => {
+    const original = app();
+    planner.mockResolvedValue({ kind: "payment", scheduled_for: "now", notes: [], payments: [
+      { recipient_name: "Linh", recipient_address: "", amount: "20", currency: "USDT" },
+    ] });
+    const plan = await createPlan(original, "Pay Linh 20 USDT");
+    const expires = "2026-11-25T12:10:00.000Z";
+    const message = [
+      "LeashPay: approve this payment plan", `Plan: ${plan.id}`, `Reference: ${plan.ref}`, `Vault: ${VAULT}`,
+      "Network: BNB Smart Chain Testnet (chain 97)", "Payments:", `- 20 USDT to Linh (${LINH})`,
+      "Scheduled for: now", `Valid until: ${expires}`,
+    ].join("\n");
+    const signature = await OWNER_ACCOUNT.signMessage({ message });
+
+    const v2 = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const v1 = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const readContract = async ({ address, functionName }: { address: Address; functionName: string }) => {
+      if (functionName === "owner" && address === VAULT) return OWNER;
+      if (functionName === "vaultOf" && address === v2) return zeroAddress;
+      if (functionName === "vaultOf" && address === v1) return VAULT;
+      throw new Error("Unexpected contract read");
+    };
+    const current = new ViemVaultGateway({ readContract } as never, null, v2, true, v1);
+    gateway.vaultOf = () => current.vaultOf(OWNER);
+    gateway.paymentFee = () => current.paymentFee(VAULT);
+    const restarted = app({}, dataDir);
+    expect((await (await restarted.request(`/plans/${plan.id}/approval`)).json() as { message: string }).message).toBe(message);
+    const result = await execute(restarted, plan.id, { signature, expires, payEarly: false });
+    expect(result.status).toBe(200);
+    expect(gateway.sent).toEqual([{ amount: 20n * 10n ** 18n, recipient: LINH, token: USDT, ref: plan.ref }]);
+  });
+
+  it("binds USDT fees to the signature, including fees on USDC and only one fee for combined lines", async () => {
+    const api = app();
+    gateway.fee = fee;
+    planner.mockResolvedValue({ kind: "payment", scheduled_for: "now", notes: [], payments: [
+      { recipient_name: "Linh", recipient_address: "", amount: "12", currency: "USDC" },
+      { recipient_name: "Linh", recipient_address: "", amount: "8", currency: "USDC" },
+      { recipient_name: "Unknown", recipient_address: "", amount: "3", currency: "USDT" },
+    ] });
+    const plan = await createPlan(api);
+    expect(plan.paymentFee).toEqual(fee);
+    const { message } = await (await api.request(`/plans/${plan.id}/approval`)).json() as { message: string };
+    expect(message).toContain(`0.01 USDT per successful payment to ${MARCO}`);
+    expect(message).toContain("Maximum service fees: 0.01 USDT");
+    expect(message).toContain("Maximum vault debit: 0.01 USDT + 20 USDC");
+    const signed = await approve(api, plan.id);
+    gateway.fee = { ...fee, recipient: LINH };
+    expect((await execute(api, plan.id, signed)).status).toBe(409);
+    expect((await api.request(`/plans/${plan.id}/approval`)).status).toBe(409);
+    expect(gateway.sent).toEqual([]);
+    gateway.fee = fee;
+    expect((await execute(api, plan.id, signed)).status).toBe(200);
+    expect(gateway.sent).toHaveLength(1);
+  });
+
+  it("requires a fresh plan when a fee-free plan would newly charge the owner", async () => {
+    const api = app();
+    const plan = await createPlan(api);
+    const signed = await approve(api, plan.id);
+    gateway.fee = fee;
+    expect((await execute(api, plan.id, signed)).status).toBe(409);
+    expect(gateway.sent).toEqual([]);
+  });
+});
 
 beforeEach(() => {
   ids = 0;

@@ -2,7 +2,7 @@
 
 import { useSignMessage } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { explorerTx, shortAddress } from "@/lib/chain";
+import { explorerAddress, explorerTx, shortAddress } from "@/lib/chain";
 import { DEMO_ATTACK_ADDRESS } from "@/lib/demo";
 import { DepegBox } from "./DepegBox";
 import { MemoryBox } from "./MemoryBox";
@@ -10,11 +10,13 @@ import { readingTime } from "@/lib/depeg";
 import { RefusalCard, type AttackResultJson } from "./RefusalCard";
 import { errorText, useApi, useOwnerWallet } from "@/lib/client";
 import {
-  formatAmount,
   formatLocal,
+  formatTokenAmount,
+  formatTotals,
   isExecutable,
   localQuotedAt,
   needsCheckAgain,
+  payoutTotals,
   rowStatus,
   type JournalEventJson,
   type PaymentResultJson,
@@ -95,7 +97,9 @@ export function PlanCard({
     }
     let signature: string;
     try {
-      ({ signature } = await signMessage({ message: approval.body.message }, { address: owner.address }));
+      ({ signature } = await signMessage({ message: approval.body.message }, {
+        address: owner.address, uiOptions: { showWalletUIs: true, title: "Approve payment plan" },
+      }));
     } catch (err) {
       setRun({ kind: "failed", error: `Not signed: ${errorText(err)}` });
       return;
@@ -150,21 +154,20 @@ export function PlanCard({
   const everPaid = rows.some(({ status }) => status.label === "Paid ✓");
   const busy = run.kind === "signing" || run.kind === "running";
 
-  const totals = new Map<string, bigint>();
-  for (const payment of plan.payments) {
-    if (payment.amount !== null) totals.set(payment.token, (totals.get(payment.token) ?? 0n) + BigInt(payment.amount));
-  }
+  const maximum = payoutTotals(payableRows, plan.paymentFee);
+  const attempted = Boolean(results) || events.some(event => event.type !== "plan_created");
+  const confirmed = payoutTotals(rows.filter(row => row.status.label === "Paid ✓").map(row => row.payment), plan.paymentFee);
   const allPaid = rows.length > 0 && rows.every(({ status }) => status.label === "Paid ✓");
   let title = plan.kind === "payment" ? "Payout plan" : "Agent response";
   if (everPaid) title = allPaid ? "Payout receipt" : "Payment progress · requested amounts";
   return (
     <div className="card plan">
       <div className="plan-caption">{title}</div>
-      {totals.size > 0 && <h2 className="plan-total">
-        {Array.from(totals, ([token, total]) => formatAmount(total.toString(), token)).join(" + ")}
+      {payableRows.length > 0 && <h2 className="plan-total">
+        {formatTotals(maximum.payouts)}
       </h2>}
       {plan.kind === "payment" && <p className="meta">
-        {plan.payments.length} payment{plan.payments.length === 1 ? "" : "s"} · {plan.scheduledFor === "now" ? "Pay now" : `Scheduled for ${plan.scheduledFor}`}
+        {payableRows.length} payment{payableRows.length === 1 ? "" : "s"} · {plan.scheduledFor === "now" ? "Pay now" : `Scheduled for ${plan.scheduledFor}`}
       </p>}
 
       {rows.map(({ payment, status, messages }, i) => (
@@ -174,7 +177,7 @@ export function PlanCard({
             {payment.recipient && <small>{shortAddress(payment.recipient)}</small>}
           </span>
           <span className="amount">
-            {formatAmount(payment.amount, payment.token)}
+            {payment.amount === null ? "—" : `${formatTokenAmount(payment.amount)} ${payment.token}`}
             {formatLocal(payment.local) && <small>{formatLocal(payment.local)}</small>}
             {payment.local && "error" in payment.local && (
               <small title={payment.local.error}>
@@ -197,6 +200,17 @@ export function PlanCard({
         </div>
       ))}
 
+      {plan.paymentFee && <div className="plan-fees">
+        <p>{formatTokenAmount(plan.paymentFee.amount)} USDT per successful payment</p>
+        <dl>
+          <div><dt>Maximum payment fees</dt><dd>{formatTokenAmount(String(maximum.fees))} USDT</dd></div>
+          <div><dt>Maximum vault debit</dt><dd>{formatTotals(maximum.debit)}</dd></div>
+          {attempted && <>
+            <div><dt>Confirmed fees</dt><dd>{formatTokenAmount(String(confirmed.fees))} USDT</dd></div>
+            <div><dt>Confirmed vault debit</dt><dd>{formatTotals(confirmed.debit)}</dd></div>
+          </>}
+        </dl>
+      </div>}
       {plan.depeg && (!plan.depeg.available || plan.depeg.chosenToken === "USDT") && (
         <p className="notice">{plan.depeg.available ? "Depeg guard selected USDT." : "Depeg check unavailable."}</p>
       )}
@@ -211,6 +225,8 @@ export function PlanCard({
           <header><h2>Checks &amp; notes</h2><button type="button" className="chip" onClick={() => checksDialog.current?.close()}>Close</button></header>
           <div className="checks-content">
             <p className="meta">Plan {shortAddress(plan.ref)}</p>
+            {plan.paymentFee && <p className="meta">Fee recipient <a href={explorerAddress(plan.paymentFee.recipient)}
+              target="_blank" rel="noreferrer">{plan.paymentFee.recipient} ↗</a></p>}
             {rows.length > 0 && <section><h3>Vault checks</h3>
               {rows.map(({ payment, status, messages }, index) => <div className="check-result" key={index}>
                 <strong>{payment.recipientName}</strong>

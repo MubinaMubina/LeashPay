@@ -4,10 +4,10 @@ import { getAddress, isAddress, parseAbiItem, type Address, type Hex } from "vie
  * Payments received by one address, from every LeashPay vault (D8, D21). The public BSC
  * testnet RPC refuses log searches, so this runs on the server through NodeReal:
  *
- *   VaultCreated logs from the factory ─► the set of real vaults
+ *   VaultCreated logs from the trusted factories ─► the set of real vaults
  *   Paid logs by recipient topic (any address) ─► keep only those emitted by a real vault
  *
- * Both searches start at the factory's deploy block and run in 50,000-block chunks.
+ * Both searches start at the first factory's deploy block and end at the finalized head.
  */
 
 /** Block of the factory's deployment tx 0x00b11fd5…cfb8a (contracts/deployments/97.json has no block numbers). */
@@ -27,20 +27,45 @@ export interface ReceivedPayment {
   amount: string;
   ref: Hex;
   hash: Hex;
+  logIndex: number;
   block: string;
   /** Seconds since 1970, from the block. */
   timestamp: number | null;
 }
 
+export interface ReceiptLog {
+  address: Address;
+  token: Address;
+  amount: bigint;
+  ref: Hex;
+  hash: Hex;
+  block: bigint;
+  logIndex: number;
+}
+
+export type AddressFilter = Address | Address[];
+
+/** A single JSON-RPC filter covers all the supplied addresses. An empty filter could match any address. */
+export function logAddressFilter(addresses: Address | readonly Address[]): AddressFilter {
+  if (typeof addresses === "string") return addresses;
+  const unique = [...new Map(addresses.map(address => [address.toLowerCase(), address])).values()];
+  if (!unique.length) throw new Error("At least one address is required for a log filter.");
+  return unique.length === 1 ? unique[0] : unique;
+}
+
+export function receiptId(log: ReceiptLog): string {
+  return `${log.hash.toLowerCase()}:${log.logIndex}`;
+}
+
+export function newestReceiptFirst(a: ReceiptLog, b: ReceiptLog): number {
+  return a.block === b.block ? b.logIndex - a.logIndex : a.block > b.block ? -1 : 1;
+}
+
 /** The chain reads this needs, so tests can stand in for NodeReal. */
 export interface LogReader {
-  getBlockNumber(): Promise<bigint>;
-  getVaultCreatedLogs(factory: Address, fromBlock: bigint, toBlock: bigint): Promise<{ vault: Address }[]>;
-  getPaidLogs(
-    recipient: Address,
-    fromBlock: bigint,
-    toBlock: bigint,
-  ): Promise<{ address: Address; token: Address; amount: bigint; ref: Hex; hash: Hex; block: bigint }[]>;
+  finalizedBlock(): Promise<bigint>;
+  getVaultCreatedLogs(factories: AddressFilter, fromBlock: bigint, toBlock: bigint): Promise<{ vault: Address }[]>;
+  getPaidLogs(recipient: Address, fromBlock: bigint, toBlock: bigint): Promise<ReceiptLog[]>;
   getBlockTimestamp(block: bigint): Promise<number>;
 }
 
@@ -68,20 +93,21 @@ export async function limited<T>(tasks: (() => Promise<T>)[], limit = CONCURRENC
   return results;
 }
 
-export async function paymentsTo(recipient: Address, factory: Address, reader: LogReader): Promise<ReceivedPayment[]> {
-  const head = await reader.getBlockNumber();
+export async function paymentsTo(recipient: Address, factories: Address | readonly Address[], reader: LogReader): Promise<ReceivedPayment[]> {
+  const trusted = logAddressFilter(factories);
+  const head = await reader.finalizedBlock();
   const ranges = chunks(FACTORY_DEPLOY_BLOCK, head);
   const [created, paid] = await Promise.all([
-    limited(ranges.map(([from, to]) => () => reader.getVaultCreatedLogs(factory, from, to))),
+    limited(ranges.map(([from, to]) => () => reader.getVaultCreatedLogs(trusted, from, to))),
     limited(ranges.map(([from, to]) => () => reader.getPaidLogs(recipient, from, to))),
   ]);
   const vaults = new Set(created.flat().map((log) => log.vault.toLowerCase()));
   // Paid is a public event signature: only events emitted by a vault the factory created count.
-  const real = paid
-    .flat()
-    .filter((log) => vaults.has(log.address.toLowerCase()))
-    .sort((a, b) => (a.block === b.block ? 0 : a.block > b.block ? -1 : 1))
-    .slice(0, MAX_LISTED);
+  const unique = new Map<string, ReceiptLog>();
+  for (const log of paid.flat()) {
+    if (vaults.has(log.address.toLowerCase())) unique.set(receiptId(log), log);
+  }
+  const real = [...unique.values()].sort(newestReceiptFirst).slice(0, MAX_LISTED);
 
   const blocks = [...new Set(real.map((log) => log.block))];
   const times = new Map(
@@ -93,6 +119,7 @@ export async function paymentsTo(recipient: Address, factory: Address, reader: L
     amount: log.amount.toString(),
     ref: log.ref,
     hash: log.hash,
+    logIndex: log.logIndex,
     block: log.block.toString(),
     timestamp: times.get(log.block) ?? null,
   }));
@@ -105,7 +132,7 @@ const json = (status: number, body: unknown) =>
  * GET /api/recipient/:address. Public and read-only: it never calls the agent. An error is
  * an error state, never an empty list, so a recipient is never told "no payments" by mistake.
  */
-export function createRecipientHandler(deps: { reader: LogReader | null; factory: Address; now?: () => number }) {
+export function createRecipientHandler(deps: { reader: LogReader | null; factory: Address | readonly Address[]; now?: () => number }) {
   const cache = new Map<string, { until: number; payments: ReceivedPayment[] }>();
   const now = deps.now ?? Date.now;
   return async (address: string): Promise<Response> => {

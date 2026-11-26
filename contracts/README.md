@@ -40,6 +40,31 @@ token budgets, bucket resets, cap reductions, duplicate refs, malicious DEX retu
 values, reentrancy, approval cleanup, oracle validity and ERC4626 owner recovery.
 The fuzz suite uses 256 cases per property.
 
+## Sponsored vaults
+
+`SponsoredLeashVaultFactory(config, treasury)` deploys a separate generation of vaults.
+An owner can activate a vault and add a recipient with zero tBNB. The owner signs typed data
+and a relayer submits the transaction. The EIP-712 domain uses the name `LeashPay`,
+version `2`, the current chain ID, and the address of the contract receiving the call.
+Both contracts expose their domain through `eip712Domain()`.
+
+- `createVaultFor` verifies `ActivateVault(address owner,bytes32 rulesHash,uint256 deadline)`.
+  Compute `rulesHash` with `keccak256(abi.encode(rules))` using the six fields in the frozen
+  `ILeashVault.Rules` order. Both direct and relayed activation use the same one-vault-per-owner registry.
+- `addRecipientFor` verifies `AddRecipient(address recipient,uint256 monthlyCap,uint256 nonce,uint256 deadline)`.
+  Read `recipientNonce(recipient)` from the vault before signing. Every successful addition, direct edit
+  or removal advances that recipient’s nonce. The owner can cancel a pending addition with
+  `setRecipient(recipient, false, 0)`. Existing recipients can be edited directly by the owner.
+- `paymentTerms()` returns the fee token, treasury and fixed fee in token base units.
+  Each successful `pay` transfers the full requested payout to the recipient, then 0.01 mUSDT
+  from the vault to the treasury. For a 1 mUSDC payout the vault needs both 1 mUSDC and 0.01 mUSDT.
+  The full debit counts against the per-payment, daily and recipient monthly caps.
+  A transfer failure rolls back the entire transaction, including the reference and spending counters.
+
+Receipts carry the original `Paid` event and a `PaymentFeeCharged` event with the same beneficiary
+and reference. The fee token’s `Transfer` event records the treasury as its destination.
+Setup, swaps, T-bill operations and owner withdrawals carry no payment fee.
+
 ## BSC testnet deployment
 
 The chain 97 deployment is recorded in [deployments/97.json](deployments/97.json).
