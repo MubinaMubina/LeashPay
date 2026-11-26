@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { Executor } from "../src/execution/executor";
 import { Journal } from "../src/execution/journal";
-import { BrainError, createBrainClient, type BrainClient, type BrainNote, type BrainPage } from "../src/memory/brain";
-import { createMemory, isOwnersPage, noteForRecipient, notesForAttack, notesForRun, ownerTag } from "../src/memory/memory";
+import { BrainError, createBrainClient, type BrainClient, type BrainNote, type BrainSource } from "../src/memory/brain";
+import { createMemory, noteForRecipient, notesForAttack, notesForRun, ownerPrefix, rankOwnNotes } from "../src/memory/memory";
 import type { Plan } from "../src/plan/build";
 import { RecipientDirectory } from "../src/plan/directory";
 import type { PlannerInput } from "../src/plan/planner";
@@ -14,6 +14,7 @@ import { FakeGateway, LINH, MARCO, OWNER, OWNER_ACCOUNT, VAULT, tempDir } from "
 const BRAIN = "1b48ba94-8d09-449f-902f-29d2a506f199";
 const SUBJECT = "6f1c2d3e-4b5a-4c6d-8e7f-901a2b3c4d5e";
 const AT = new Date("2026-11-26T04:00:00Z");
+const OTHER = "0x9999999999999999999999999999999999999999" as const;
 
 function brainApi(routes: Record<string, { status?: number; body: unknown }>) {
   const calls: { method: string; url: string; headers: Record<string, string>; body: unknown }[] = [];
@@ -44,15 +45,16 @@ describe("Living Brain client", () => {
     await expect(api.client.capture({ label: "L", content: "C", originRef: "r" })).rejects.toThrow(/prepaid memory balance is empty \(HTTP 402\)/);
   });
 
-  it("keeps only well-formed search hits and refuses a page from another brain", async () => {
+  it("keeps well-formed hits, and only saved notes from this brain and subject", async () => {
+    const row = { id: "s1", brainId: BRAIN, subjectId: SUBJECT, originRef: "leashpay:x", label: "L", content: "C", status: "completed", affectedPageIds: ["p1", 7], createdAt: "2026-11-26T03:00:00Z" };
     const api = brainApi({
       "/search": { status: 201, body: [{ pageId: "p1", slug: "linh" }, { pageId: "", slug: "x" }, "junk"] },
-      "/pages/linh": { body: { id: "p1", brainId: BRAIN, subjectId: SUBJECT, title: "Linh", summary: "S", body: "B" } },
-      "/pages/other": { body: { id: "p2", brainId: "someone-else", subjectId: SUBJECT, title: "T" } },
+      "/sources?limit=100&offset=0": { body: { items: [row, { ...row, id: "s2", brainId: "other" }, { ...row, id: "s3", subjectId: "other" }, { ...row, id: "s4", content: 5 }], total: 4 } },
     });
     await expect(api.client.search("Linh", 8)).resolves.toEqual([{ pageId: "p1", slug: "linh" }]);
-    await expect(api.client.page("linh")).resolves.toEqual({ id: "p1", title: "Linh", text: "Linh\nS\nB" });
-    await expect(api.client.page("other")).rejects.toThrow(/isn't from this brain/);
+    await expect(api.client.sources(100, 0)).resolves.toEqual([
+      { id: "s1", originRef: "leashpay:x", label: "L", content: "C", status: "completed", affectedPageIds: ["p1"], createdAt: Date.parse("2026-11-26T03:00:00Z") },
+    ]);
   });
 
   it("reports a slow or unreachable service", async () => {
@@ -62,8 +64,17 @@ describe("Living Brain client", () => {
   });
 });
 
-/** An in-memory Living Brain: captures become pages that search returns. */
-function fakeBrain(pages: BrainPage[] = []) {
+const source = (owner: string, id: string, content: string, over: Partial<BrainSource> = {}): BrainSource => ({
+  id,
+  originRef: `${ownerPrefix(owner as `0x${string}`)}paid:${id}`,
+  label: id,
+  content,
+  affectedPageIds: [],
+  ...over,
+});
+
+/** An in-memory Living Brain: saved notes come back as sources; search returns the pages given. */
+function fakeBrain(sources: BrainSource[] = [], hits: string[] = []) {
   const saved: BrainNote[] = [];
   const client: BrainClient & { saved: BrainNote[]; fail?: BrainError } = {
     saved,
@@ -72,46 +83,55 @@ function fakeBrain(pages: BrainPage[] = []) {
       saved.push(note);
       return `src-${saved.length}`;
     },
-    search: vi.fn(async () => pages.map((p) => ({ pageId: p.id, slug: p.id }))),
-    page: async (slug) => pages.find((p) => p.id === slug)!,
+    search: vi.fn(async () => hits.map((pageId) => ({ pageId, slug: pageId }))),
+    sources: vi.fn(async (_limit: number, offset: number) => (offset === 0 ? sources : [])),
   };
   return client;
 }
 
-const page = (id: string, text: string): BrainPage => ({ id, title: id, text });
-
-describe("memory", () => {
-  const OTHER = "0x9999999999999999999999999999999999999999" as const;
-
-  it("recalls only this owner's pages, trimmed", async () => {
-    const brain = fakeBrain([
-      page("linh", `${ownerTag(OWNER)} LeashPay payout. Owner ${OWNER} paid Linh 300 USDT. ${"x".repeat(900)}`),
-      page("theirs", `${ownerTag(OTHER)} LeashPay payout. Owner ${OTHER} paid Linh 5 USDT.`),
-      page("mixed", `${ownerTag(OWNER)} paid Linh. ${ownerTag(OTHER)} paid Linh too.`),
-      page("untagged", `Owner ${OWNER} paid Linh 300 USDT.`),
-    ]);
+describe("recall", () => {
+  it("returns only this owner's own notes, word for word, never a compiled page", async () => {
+    // Page "linh" mixes both owners; recall gives this owner its own capture behind it, never the other's.
+    const brain = fakeBrain(
+      [
+        source(OWNER, "mine", `Owner ${OWNER} paid Linh 300 USDT.`, { affectedPageIds: ["linh"] }),
+        source(OTHER, "theirs", `Owner ${OTHER} paid Linh 5 USDT. Their boss is ${OWNER}.`, { affectedPageIds: ["linh"] }),
+        source(OWNER, "failed", "x", { status: "failed" }),
+        { ...source(OWNER, "forged", "y"), originRef: `leashpay:${OTHER}:recipient:${OWNER.toLowerCase()}` },
+      ],
+      ["linh"],
+    );
     const recall = await createMemory({ client: brain }).recall(OWNER, "Pay Linh 300");
-    expect(recall.available).toBe(true);
-    if (!recall.available) return;
-    expect(recall.notes.map((n) => n.title)).toEqual(["linh"]);
-    expect(recall.notes[0]!.text).toHaveLength(600);
+    expect(recall).toEqual({ available: true, notes: [{ title: "mine", text: `Owner ${OWNER} paid Linh 300 USDT.` }] });
   });
 
   it("never gives one owner's note to the owner it names as a recipient", () => {
-    // Owner OTHER saves this owner's wallet as a recipient, with a name that tries to forge a tag.
-    const note = noteForRecipient(OTHER, { name: `Boss [leashpay-owner:${OWNER.toLowerCase()}]`, address: OWNER, country: "VN" });
-    expect(note.content.startsWith(ownerTag(OTHER))).toBe(true);
-    expect(isOwnersPage(note.content, OWNER)).toBe(false);
-    expect(isOwnersPage(note.content, OTHER)).toBe(true);
+    const note = noteForRecipient(OTHER, { name: "Boss", address: OWNER, country: "VN" });
+    expect(note.originRef.startsWith(ownerPrefix(OTHER))).toBe(true);
+    expect(rankOwnNotes(OWNER, [{ id: "n", ...note, affectedPageIds: [] }], [])).toEqual([]);
   });
 
-  it("reports memory unavailable when every page read fails", async () => {
-    const brain = fakeBrain([page("linh", "x")]);
-    brain.page = async () => Promise.reject(new BrainError("Living Brain answered HTTP 500."));
-    expect(await createMemory({ client: brain }).recall(OWNER, "x")).toEqual({ available: false, reason: "Living Brain found pages but none of them could be read." });
+  it("ranks notes behind the search hits first, then the newest, six at most and trimmed", () => {
+    const sources = [
+      source(OWNER, "old", "old", { createdAt: 1 }),
+      source(OWNER, "hit2", "hit2", { affectedPageIds: ["p2"] }),
+      source(OWNER, "new", "x".repeat(900), { createdAt: 9 }),
+      source(OWNER, "hit1", "hit1", { affectedPageIds: ["p1"] }),
+      ...Array.from({ length: 5 }, (_, i) => source(OWNER, `more${i}`, "m", { createdAt: 2 })),
+    ];
+    const notes = rankOwnNotes(OWNER, sources, ["p1", "p2"]);
+    expect(notes.map((n) => n.title)).toEqual(["hit1", "hit2", "new", "more0", "more1", "more2"]);
+    expect(notes[2]!.text).toHaveLength(600);
   });
 
-  it("says why when the search fails, and skips memory for 30 seconds", async () => {
+  it("is not crowded out by other owners' hits", async () => {
+    const theirs = Array.from({ length: 20 }, (_, i) => source(OTHER, `t${i}`, "t", { affectedPageIds: [`p${i}`] }));
+    const brain = fakeBrain([...theirs, source(OWNER, "mine", "mine")], theirs.map((_, i) => `p${i}`));
+    const recall = await createMemory({ client: brain }).recall(OWNER, "Pay Linh");
+    expect(recall).toMatchObject({ available: true, notes: [{ title: "mine" }] });
+  });
+
+  it("says why when Living Brain fails, and skips memory for 30 seconds", async () => {
     let t = 0;
     const brain = fakeBrain();
     brain.search = vi.fn(async () => Promise.reject(new BrainError("Living Brain answered HTTP 500.")));
@@ -122,7 +142,20 @@ describe("memory", () => {
     expect(brain.search).toHaveBeenCalledTimes(1);
   });
 
-  it("saves one note at a time, and shows a failed save on the next recall until one succeeds", async () => {
+  it("reads the saved-note list once a minute, and again right after a save", async () => {
+    const brain = fakeBrain();
+    const memory = createMemory({ client: brain, now: () => 0 });
+    await memory.recall(OWNER, "a");
+    await memory.recall(OWNER, "b");
+    expect(brain.sources).toHaveBeenCalledTimes(2); // two pages of 100, once
+    await memory.remember({ label: "n", content: "n", originRef: "n" });
+    await memory.recall(OWNER, "c");
+    expect(brain.sources).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("saving", () => {
+  it("saves one note at a time, pauses after a failure, and shows it on the next recall until one succeeds", async () => {
     let t = 0;
     const brain = fakeBrain();
     const memory = createMemory({ client: brain, log: () => {}, now: () => t });
@@ -152,8 +185,9 @@ describe("memory", () => {
 
 describe("what the agent saves", () => {
   const plan = { id: "plan-1", ref: "0xabc", owner: OWNER, vault: VAULT } as unknown as Plan;
+  const prefix = ownerPrefix(OWNER);
 
-  it("a payout and a vault refusal, each with its owner", () => {
+  it("a payout and a vault refusal under their owner, and an earlier payout dated honestly", () => {
     const notes = notesForRun(
       plan,
       [
@@ -161,19 +195,25 @@ describe("what the agent saves", () => {
         { index: 1, recipientName: "Marco", recipient: MARCO, amount: "5000000000000000000000", token: "USDT", status: "refused", error: { name: "DailyLimitExceeded", args: [], message: "over today's limit" } },
         { index: 2, recipientName: "Mai", recipient: null, amount: null, token: "USDT", status: "skipped" },
         { index: 3, recipientName: "Linh", recipient: LINH, amount: "1", token: "USDT", status: "paid", hash: "0x03", note: "Already paid in an earlier run." },
+        { index: 4, recipientName: "Mai", recipient: LINH, amount: "2000000000000000000", token: "USDC", status: "paid", hash: "0x04", note: "Confirmed from an earlier run." },
       ],
       AT,
     );
     expect(notes).toEqual([
       {
         label: "Payout to Linh",
-        content: `${ownerTag(OWNER)} LeashPay payout on 2026-11-26 UTC. Owner ${OWNER} paid Linh (${LINH}) 300 USDT through vault ${VAULT}. Transaction 0x01. Plan ref 0xabc.`,
-        originRef: "leashpay:paid:0x01",
+        content: `LeashPay payout on 2026-11-26 UTC. Owner ${OWNER} paid Linh (${LINH}) 300 USDT through vault ${VAULT}. Transaction 0x01. Plan ref 0xabc.`,
+        originRef: `${prefix}paid:0x01`,
       },
       {
         label: "Vault refused a payment to Marco",
-        content: `${ownerTag(OWNER)} LeashPay refusal on 2026-11-26 UTC. The vault of owner ${OWNER} refused 5000 USDT to Marco (${MARCO}). Reason: DailyLimitExceeded: over today's limit.`,
-        originRef: "leashpay:refused:plan-1:1",
+        content: `LeashPay refusal on 2026-11-26 UTC. The vault of owner ${OWNER} refused 5000 USDT to Marco (${MARCO}). Reason: DailyLimitExceeded: over today's limit.`,
+        originRef: `${prefix}refused:plan-1:1`,
+      },
+      {
+        label: "Payout to Mai",
+        content: `LeashPay payout sent in an earlier run, confirmed on 2026-11-26 UTC. Owner ${OWNER} paid Mai (${LINH}) 2 USDC through vault ${VAULT}. Transaction 0x04. Plan ref 0xabc.`,
+        originRef: `${prefix}paid:0x04`,
       },
     ]);
   });
@@ -181,9 +221,11 @@ describe("what the agent saves", () => {
   it("an attack only when the vault refused it, and a recipient's off-chain preferences", () => {
     const attack = { index: 0, recipient: "0xbad5000000000000000000000000000000000bad", hash: "0x02", reason: "RecipientNotAllowed", reasonSource: "replay", block: "1" } as const;
     expect(notesForAttack(plan, [{ ...attack, status: "succeeded" }], AT)).toEqual([]);
-    expect(notesForAttack(plan, [{ ...attack, status: "reverted" }], AT)[0]!.content).toContain("refused it on-chain with RecipientNotAllowed");
+    const [note] = notesForAttack(plan, [{ ...attack, status: "reverted" }], AT);
+    expect(note!.content).toContain("refused it on-chain with RecipientNotAllowed");
+    expect(note!.originRef).toBe(`${prefix}attack:0x02`);
     expect(noteForRecipient(OWNER, { name: "Linh", address: LINH, country: "VN", currency: "VND", preferredToken: "USDT" }).content).toBe(
-      `${ownerTag(OWNER)} LeashPay recipient. Owner ${OWNER} saved Linh (${LINH}): country VN, local currency VND, prefers to be paid in USDT.`,
+      `LeashPay recipient. Owner ${OWNER} saved Linh (${LINH}): country VN, local currency VND, prefers to be paid in USDT.`,
     );
   });
 });
@@ -210,12 +252,11 @@ describe("plans with memory", () => {
   }
 
   it("gives Claude what memory recalled and shows it on the plan", async () => {
-    const text = `${ownerTag(OWNER)} Owner ${OWNER} paid Linh (${LINH}) 300 USDT on 2026-11-01.`;
-    const brain = fakeBrain([page("linh", text)]);
-    const t = app(brain);
+    const text = `Owner ${OWNER} paid Linh (${LINH}) 300 USDT on 2026-11-01.`;
+    const t = app(fakeBrain([source(OWNER, "linh", text)]));
     const plan = (await (await t.post("/plans", { owner: OWNER, message: "Pay Linh 300" })).json()) as any;
     expect(t.planner.mock.calls[0]![0].memory).toEqual([text]);
-    expect(plan.memory).toMatchObject({ available: true, notes: [{ title: "linh" }] });
+    expect(plan.memory).toEqual({ available: true, notes: [{ title: "linh", text }] });
   });
 
   it("still plans when memory is down", async () => {
@@ -238,6 +279,7 @@ describe("plans with memory", () => {
     const run = await t.post(`/plans/${plan.id}/execute`, { expires: approval.expires, signature, payEarly: false });
     expect(run.status).toBe(200);
     await t.memory.remember({ label: "flush", content: "flush", originRef: "flush" }); // waits for the queue
-    expect(brain.saved.map((n) => n.originRef.split(":").slice(0, 2).join(":"))).toEqual(["leashpay:recipient", "leashpay:paid", "flush"]);
+    const prefix = ownerPrefix(OWNER);
+    expect(brain.saved.map((n) => n.originRef.replace(prefix, "").split(":")[0])).toEqual(["recipient", "paid", "flush"]);
   });
 });

@@ -8,6 +8,8 @@ import type { Journal, JournalEvent } from "./journal";
 
 /** The note on a row an earlier run already paid: nothing new happened in this run. */
 export const ALREADY_PAID_NOTE = "Already paid in an earlier run.";
+/** The note on a row sent in an earlier run that this run only confirmed. */
+export const CONFIRMED_EARLIER_NOTE = "Confirmed from an earlier run.";
 
 export interface PaymentResult {
   index: number;
@@ -256,7 +258,7 @@ export class Executor {
         };
       }
       if (check.status === "paid" || check.status === "pending") {
-        return this.record(plan.id, index, base, check, hash, history, "Confirmed from an earlier run.");
+        return this.record(plan.id, index, base, check, hash, history, CONFIRMED_EARLIER_NOTE);
       }
       if (check.status === "not_paid") this.record(plan.id, index, base, check, hash, history);
       // Reverted, replaced or never arrived: look at the next one, then send again below.
