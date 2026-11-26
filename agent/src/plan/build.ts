@@ -1,5 +1,6 @@
 import type { DepegDecision } from "../depeg/guard";
 import type { LocalAmount } from "../fx/rates";
+import type { Recall } from "../memory/memory";
 import { formatUnits, getAddress, isAddress, keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
 import type { VaultRevert } from "../chain/errors";
 import type { VaultSnapshot } from "../chain/gateway";
@@ -38,6 +39,8 @@ export interface Plan {
    * with its sentence. The sentence is also in `notes` (so the owner signs it); the card reads it from here.
    */
   depeg?: DepegDecision & { note: string };
+  /** What the agent's memory (Living Brain) recalled before planning, when memory is on. Not in the signed text. */
+  memory?: Recall;
 }
 
 export type ExecutablePayment = PlannedPayment & { recipient: Address; amount: bigint };

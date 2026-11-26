@@ -92,6 +92,10 @@ Each payment plan's card shows the agent's Cournot reading: the exact claim, the
 - **Failures:** a failed search shows an error, never "no payments". "Cash out" is mocked.
 - **Local value:** for a demo recipient, each payment also shows "≈ 25,809 VND today" and the rate's time, from `/api/fx/:currency`. The route is public like the page, so it answers only VND, PHP and THB, keeps `CMC_API_KEY` on the server, caches each rate for 5 minutes and never echoes CoinMarketCap's errors. Without a rate the page still shows the coin amounts.
 
+### Agent memory on the plan
+
+When the agent's memory is on, each plan card has an "Agent memory" box: the Living Brain notes the agent recalled for this message, "Nothing recalled for this message.", or why memory was unavailable. If saving new memories is failing (on 26 Nov: HTTP 402, the project's prepaid balance is empty), the box says so. How the agent uses memory is in the [agent README](../agent/README.md#memory-living-brain).
+
 ### Local-currency amounts on the plan
 
 Each payment row shows the agent's local amount under the coin amount ("≈ 7,752,700 VND"), and one line under the rows gives CoinMarketCap's rate time. It is for information: the vault pays the coin amount. When the agent couldn't get a rate, the row says "no VND rate". How the agent gets it is in the [agent README](../agent/README.md#local-currency-amounts-coinmarketcap).

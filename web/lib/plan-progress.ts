@@ -41,6 +41,11 @@ export type DepegJson =
 /** The guard's decision plus its sentence (the one in the signed text). Older plans have no `note`. */
 export type PlanDepegJson = DepegJson & { note?: string };
 
+/** What the agent's memory (Living Brain) recalled before planning. */
+export type PlanMemoryJson =
+  | { available: true; notes: { title: string; text: string }[]; writeError?: string }
+  | { available: false; reason: string; writeError?: string };
+
 export interface PlanJson {
   id: string;
   ref: string;
@@ -54,6 +59,8 @@ export interface PlanJson {
   createdAt: string;
   /** The depeg guard's decision (Cournot), when it ran. */
   depeg?: PlanDepegJson;
+  /** The agent's memory (Living Brain), when it is on. */
+  memory?: PlanMemoryJson;
 }
 
 export type JournalEventJson =

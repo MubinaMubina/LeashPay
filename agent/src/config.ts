@@ -32,6 +32,10 @@ const EnvSchema = z.object({
   COURNOT_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   /** CoinMarketCap Pro key, for local-currency amounts on plans. Without it, plans show dollars only. */
   CMC_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  /** Living Brain (the agent's memory). All three are needed; without them memory is off. */
+  LIVING_BRAIN_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  LIVING_BRAIN_BRAIN_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  LIVING_BRAIN_SUBJECT_ID: z.preprocess(emptyToUndefined, z.uuid().optional()),
   /** "1" turns on POST /plans/:id/demo-attack for the live demo. Off unless set. */
   AGENT_DEMO_ATTACK: z.preprocess(emptyToUndefined, z.enum(["0", "1"]).default("0")),
   DATA_DIR: z.string().default(path.resolve(here, "../data")),

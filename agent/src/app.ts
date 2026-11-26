@@ -8,6 +8,7 @@ import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gate
 import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
 import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegDecision, type DepegGuard } from "./depeg/guard";
 import { attachLocalAmounts, currenciesFor, type FxService } from "./fx/rates";
+import { noteForRecipient, notesForAttack, notesForRun, type Memory } from "./memory/memory";
 import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
 import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
@@ -35,6 +36,8 @@ export interface AppDeps {
   depeg?: DepegGuard;
   /** Local-currency amounts (CoinMarketCap). Without it, plans show amounts in dollars only. */
   fx?: FxService;
+  /** The agent's memory (Living Brain). Without it, plans recall nothing and nothing is saved. */
+  memory?: Memory;
   /** Turns on POST /plans/:id/demo-attack (AGENT_DEMO_ATTACK=1). Off by default: the route answers 404. */
   demoAttack?: boolean;
   now?: () => Date;
@@ -188,7 +191,9 @@ export function createApp(deps: AppDeps) {
 
   app.post("/directory", async (c) => {
     const { owner, ...entry } = input(DirectoryBody, await readJson(c));
-    return c.json(deps.directory.upsert(owner, entry), 201);
+    const saved = deps.directory.upsert(owner, entry);
+    void deps.memory?.remember(noteForRecipient(owner, entry));
+    return c.json(saved, 201);
   });
 
   app.get("/vaults/:owner", async (c) => {
@@ -202,13 +207,17 @@ export function createApp(deps: AppDeps) {
   // payment is only simulated against the vault, so the owner sees its verdict.
   app.post("/plans", async (c) => {
     const body = input(CreatePlanBody, await readJson(c));
+    // Recalled while the vault is read: memory is only context for Claude, so it never holds up the chain reads.
+    const recalling = deps.memory?.recall(body.owner, body.message);
     const vault = await findVault(deps.gateway, body.owner);
     const snapshot = vault ? await deps.gateway.snapshot(vault) : null;
     const directory = deps.directory.list(body.owner);
     const at = now();
+    const recalled = recalling ? await recalling : undefined;
 
     const draft = await deps.planner({
       message: body.message,
+      memory: recalled?.available ? recalled.notes.map((n) => n.text) : undefined,
       directory,
       today: at.toISOString().slice(0, 10),
       balances: snapshot
@@ -236,6 +245,7 @@ export function createApp(deps: AppDeps) {
       plan.notes.push(note);
     }
     if (fxQuotes) attachLocalAmounts(plan, directory, await fxQuotes);
+    if (recalled) plan.memory = recalled;
     if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 
     deps.journal.append({ type: "plan_created", planId: plan.id, plan: toJson(plan) as PlanJson });
@@ -306,6 +316,7 @@ export function createApp(deps: AppDeps) {
     deps.journal.append({ type: "approval_used", planId: plan.id, approval: approvalId });
 
     const results = await deps.executor.execute(plan);
+    if (deps.memory) for (const note of notesForRun(plan, results, now())) void deps.memory.remember(note);
     return c.json(toJson({ planId: plan.id, results }));
   });
 
@@ -319,6 +330,7 @@ export function createApp(deps: AppDeps) {
     const refusal = notRunnable(c, plan);
     if (refusal) return refusal;
     const results = await deps.executor.demoAttack(plan, DEMO_ATTACK_ADDRESS);
+    if (deps.memory) for (const note of notesForAttack(plan, results, now())) void deps.memory.remember(note);
     return c.json(toJson({ planId: plan.id, results }));
   });
 

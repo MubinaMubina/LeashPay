@@ -605,6 +605,11 @@ code {
 .depeg.off {
   color: var(--ink-2);
 }
+.memory-warn {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
 .depeg-head {
   font-weight: 700;
   display: flex;

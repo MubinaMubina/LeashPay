@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { explorerTx, shortAddress } from "@/lib/chain";
 import { DEMO_ATTACK_ADDRESS } from "@/lib/demo";
 import { DepegBox } from "./DepegBox";
+import { MemoryBox } from "./MemoryBox";
 import { readingTime } from "@/lib/depeg";
 import { RefusalCard, type AttackResultJson } from "./RefusalCard";
 import { errorText, useApi, useOwnerWallet } from "@/lib/client";
@@ -177,6 +178,8 @@ export function PlanCard({
       {quotedAt && <div className="meta fx-source">Local amounts: CoinMarketCap rate from {readingTime(quotedAt)}, for information; the vault pays the coin amount.</div>}
 
       {plan.depeg && <DepegBox depeg={plan.depeg} />}
+
+      {plan.memory && <MemoryBox memory={plan.memory} />}
 
       {notes.length > 0 && (
         <ul className="notes">
