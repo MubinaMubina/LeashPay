@@ -95,6 +95,8 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 | `POST /directory/rename` | Renames an existing address with `{ owner, address, expectedName, name }`. An identical retry returns the current directory. A conflicting name, deleted contact or newer rename returns 409. |
 | `POST /directory/remove` | Removes `{ owner, address }` from the directory after checking that the owner’s vault has disabled the address. Returns the updated list. |
 | `GET /vaults/:owner` | The owner's vault: owner, agent, paused, rules, today's spend and swaps, balances. 404 if they have none. |
+| `GET /vaults/:owner/runway` | Liquid USDT and USDC balances, dated plans, and weekly projections for 30 UTC calendar days. |
+| `POST /runway/inclusion` | Include or remove a dated plan in the owner's forecast. This only records a planning preference. |
 | `POST /chat` | Accepts `{ owner, message, context? }`. Claude selects a help, balance, recipients, add, clarification or payment card. Context contains up to six earlier messages from the owner's pending payment. For a complete payment the result contains the owner's words to submit to `POST /plans`. The route itself only selects the next action. |
 | `POST /plans` | `{ owner, message, depegThreshold? }` → a plan with warnings, notes and the vault's simulated verdict per payment. `depegThreshold` is the owner's depeg limit in percent (0 to 100, default 5); the plan's `depeg` field holds the guard's decision, each payment's `local` its amount in the recipient's currency, and `memory` what Living Brain recalled. Sends nothing. |
 | `GET /plans/:id` | The plan and every journal event for it. |

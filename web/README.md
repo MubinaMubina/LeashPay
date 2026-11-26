@@ -24,8 +24,8 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm install
    npm run dev
    ```
-4. Open http://localhost:3000 and log in with your email.
-5. Visitors and signed-in owners share **Payment chat**, **Recipients**, **Your vault**, and **History**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
+4. Open http://localhost:3000. Choose **Continue with email** to sign in or **Explore workspace** to browse the public dashboard. Returning signed-in owners go directly to the dashboard.
+5. Visitors and signed-in owners share **Payment chat**, **Recipients**, **Your vault**, and **Cash flow**. Cash flow opens to confirmed payment history, with the **30-day forecast** alongside it. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
 
@@ -46,6 +46,8 @@ The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/a
 | Web route | Agent call |
 |---|---|
 | `GET /api/vault` | `GET /vaults/:owner` |
+| `GET /api/runway` | `GET /vaults/:owner/runway` |
+| `POST /api/runway/inclusion` | `POST /runway/inclusion` with the session owner, plan ID and inclusion choice |
 | `GET /api/directory` | `GET /directory?owner=` |
 | `POST /api/directory` | `POST /directory` |
 | `POST /api/chat` | `POST /chat` |
@@ -63,6 +65,14 @@ The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/a
   - If the agent isn't running, the page shows a banner.
   - If the agent is busy with another plan, the card offers Retry.
   - Retry and "Check again" always sign a fresh approval for the same plan, whose id is kept in the address bar, so a reload resumes it and nothing is paid twice.
+
+### 30-day forecast
+
+In **Cash flow → 30-day forecast**, open **Choose payouts** to include dated payment plans. To add a bill, prepare a payment in chat with a recipient, amount and due date. Selecting it saves a forecast preference and requires no wallet transaction. When a coin is projected to run short, **View forecast** in the vault opens this view directly.
+
+The forecast starts from the vault’s liquid USDT and USDC and projects each balance through today plus 29 days (UTC). It assumes zero new deposits and swaps. Selected overdue amounts are due today. Confirmed payments drop out, including individual rows of partially paid plans. A selected payout awaiting its receipt pauses the projection until the agent knows the outcome.
+
+A shortfall starts the day either coin goes negative. A low-buffer week ends with zero of a coin it used, or too little of that coin to cover the next seven days of included payouts within the forecast window.
 
 ### Payment chat
 
@@ -109,7 +119,7 @@ Open **Checks & notes → Stablecoin risk** on a payment plan to see the agent's
 
 ### Payment history
 
-Open **History** to see confirmed LeashPay payments, newest first. Choose **All**, **Sent**, or **Received** and use **Load 10 more** for older receipts. Select **Receipt** to see the transaction on BscScan. A signed-in wallet can see incoming payments before activating its own vault.
+Open **Cash flow → History** to see confirmed LeashPay payments, newest first. Choose **All**, **Sent**, or **Received** and use **Load 10 more** for older receipts. Select **Receipt** to see the transaction on BscScan. A signed-in wallet can see incoming payments before activating its own vault.
 
 Select a name in **Recipients** for the saved wallet details, cap, dated receipts and all-time totals with that contact in each stablecoin. The totals include payments before the first page. A payment to a saved contact’s LeashPay vault also belongs to that contact.
 
