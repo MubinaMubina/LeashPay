@@ -49,6 +49,18 @@ describe("GET /api/fx/:currency", () => {
     expect(c.calls).toHaveLength(1);
   });
 
+  it("quotes both stablecoins in USD for the bank preview in one market request", async () => {
+    const payload = answer("USD", 0.99);
+    payload.data[1].quote[0].price = 1.01;
+    const c = cmc(payload);
+    const handle = createFxHandler({ apiKey: "k", fetch: c.fetch, now: () => NOW });
+    const response = await handle("usd");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ currency: "USD", USDT: 0.99, USDC: 1.01, quotedAt: STAMP });
+    expect(c.calls).toHaveLength(1);
+    expect(c.calls[0].url).toContain("convert=USD");
+  });
+
   it("shares one CoinMarketCap call across a burst of visitors", async () => {
     const c = cmc(answer("PHP"));
     const handle = createFxHandler({ apiKey: "k", fetch: c.fetch, now: () => NOW });
@@ -70,7 +82,7 @@ describe("GET /api/fx/:currency", () => {
   it("refuses other currencies without calling, and says when the key is missing", async () => {
     const c = cmc(answer("EUR"));
     const handle = createFxHandler({ apiKey: "k", fetch: c.fetch, now: () => NOW });
-    for (const code of ["EUR", "USD", "VND&convert=EUR"]) expect((await handle(code)).status).toBe(400);
+    for (const code of ["EUR", "USD&convert=EUR", "VND&convert=EUR"]) expect((await handle(code)).status).toBe(400);
     expect(c.calls).toHaveLength(0);
     expect((await createFxHandler({ fetch: c.fetch })("PHP")).status).toBe(503);
   });

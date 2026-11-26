@@ -170,6 +170,14 @@ button, input, select { font-family: inherit; }
 .transfer-value input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--ink); font-size: clamp(32px, 4vw, 48px); line-height: 1.2; letter-spacing: -.045em; font-weight: 600; }
 .transfer-value input::placeholder { color: #7b7e74; opacity: 1; }
 .transfer-value span { font-weight: 650; font-size: 16px; }
+.transfer-estimate { margin-top: 12px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+.estimate-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; color: var(--ink-2); font-size: 13px; }
+.estimate-heading [role="group"] { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.estimate-heading button { border: 0; background: var(--panel); color: var(--ink-2); min-height: 32px; padding: 4px 9px; font-size: 12px; cursor: pointer; }
+.estimate-heading button:focus-visible { outline-offset: -3px; }
+.estimate-heading button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.transfer-estimate output { display: block; margin: 4px 0; color: var(--ink); font-size: 20px; font-weight: 650; overflow-wrap: anywhere; }
+.transfer-estimate p { margin: 0; color: var(--ink-3); font-size: 12px; }
 .transfer-route { margin: 16px 0; }
 .transfer-route > div { position: relative; display: grid; grid-template-columns: 45px 1fr; gap: 8px; align-items: baseline; padding: 7px 0 7px 24px; }
 .transfer-route > div::before { content: ""; position: absolute; top: 50%; left: 3px; width: 8px; height: 8px; transform: translateY(-50%); background: var(--panel); border: 1.5px solid var(--ink-3); border-radius: 50%; z-index: 1; }

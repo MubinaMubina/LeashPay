@@ -1,14 +1,13 @@
 /**
- * GET /api/fx/:currency for the recipient's phone page: what 1 USDT and 1 USDC are worth today
- * in their currency, from CoinMarketCap. Public (recipients have no login), so it takes only the
+ * GET /api/fx/:currency prices USDT and USDC for recipient receipts and bank transfer previews. Public (recipients have no login), so it takes only the
  * demo's currencies and caches each one: a stranger can't spend the plan's credits.
  */
 
-/** The demo recipients' currencies (Vietnam, the Philippines, Thailand). */
-export const FX_CURRENCIES = ["VND", "PHP", "THB"] as const;
+/** Supported fiat currencies for receipts and transfers. */
+export const FX_CURRENCIES = ["VND", "PHP", "THB", "USD"] as const;
 const CACHE_MS = 5 * 60 * 1000;
 const FAILURE_MS = 30 * 1000;
-const MAX_QUOTE_AGE_MS = 30 * 60 * 1000;
+export const MAX_QUOTE_AGE_MS = 30 * 60 * 1000;
 const COIN_IDS = { USDT: 825, USDC: 3408 } as const;
 
 export interface FxRates {

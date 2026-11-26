@@ -285,7 +285,7 @@ export function Dashboard({ owner, vault, access }: { owner: Address | null; vau
             <summary>Balance and rules {status}</summary>
             {vaultPanel}
           </details>}
-          <MoneyActions />
+          <MoneyActions active={tab === "Your vault"} />
           {access && <div ref={activation} tabIndex={-1}><AccessNotice prompt={access} /></div>}
         </section>
       </div>

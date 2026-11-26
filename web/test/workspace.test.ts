@@ -37,7 +37,7 @@ describe("public workspace", () => {
     expect(send).not.toHaveBeenCalled();
   });
   it("offers a bank transfer preview with no payment-method selector", () => {
-    const html = renderToStaticMarkup(createElement(MoneyActions));
+    const html = renderToStaticMarkup(createElement(MoneyActions, { active: true }));
     expect(html).toContain("Bank transfer");
     expect(html).toContain("Coming soon");
     expect(html).not.toMatch(/Apple Pay|<select/);
