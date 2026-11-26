@@ -196,6 +196,7 @@ describe("what the agent saves", () => {
         { index: 2, recipientName: "Mai", recipient: null, amount: null, token: "USDT", status: "skipped" },
         { index: 3, recipientName: "Linh", recipient: LINH, amount: "1", token: "USDT", status: "paid", hash: "0x03", note: "Already paid in an earlier run." },
         { index: 4, recipientName: "Mai", recipient: LINH, amount: "2000000000000000000", token: "USDC", status: "paid", hash: "0x04", note: "Confirmed from an earlier run." },
+        { index: 5, recipientName: "Linh", recipient: LINH, amount: "1000000000000000000", token: "USDT", status: "paid", hash: null, note: "already paid" },
       ],
       AT,
     );
@@ -214,6 +215,11 @@ describe("what the agent saves", () => {
         label: "Payout to Mai",
         content: `LeashPay payout sent in an earlier run, confirmed on 2026-11-26 UTC. Owner ${OWNER} paid Mai (${LINH}) 2 USDC through vault ${VAULT}. Transaction 0x04. Plan ref 0xabc.`,
         originRef: `${prefix}paid:0x04`,
+      },
+      {
+        label: "Payout to Linh",
+        content: `LeashPay payout on 2026-11-26 UTC. Owner ${OWNER} paid Linh (${LINH}) 1 USDT through vault ${VAULT}. Transaction hash unknown (the vault confirmed the payment as already made). Plan ref 0xabc.`,
+        originRef: `${prefix}paid:plan-1:5`,
       },
     ]);
   });

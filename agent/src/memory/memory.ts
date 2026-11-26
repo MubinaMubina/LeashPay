@@ -138,14 +138,15 @@ export function notesForRun(plan: Plan, results: PaymentResult[], at: Date): Bra
   const prefix = ownerPrefix(plan.owner);
   return results.flatMap((r): BrainNote[] => {
     const who = `${oneLine(r.recipientName, 60)} (${r.recipient ?? "no address"})`;
-    if (r.status === "paid" && r.hash && r.note !== ALREADY_PAID_NOTE) {
+    if (r.status === "paid" && r.note !== ALREADY_PAID_NOTE) {
       // Sent in this run, or sent earlier and only confirmed now: the date says which.
       const when = r.note === CONFIRMED_EARLIER_NOTE ? `sent in an earlier run, confirmed on ${day(at)} UTC` : `on ${day(at)} UTC`;
       return [
         {
           label: `Payout to ${oneLine(r.recipientName, 60)}`,
-          content: `LeashPay payout ${when}. Owner ${plan.owner} paid ${who} ${amountOf(r.amount, r.token)} through vault ${plan.vault}. Transaction ${r.hash}. Plan ref ${plan.ref}.`,
-          originRef: `${prefix}paid:${r.hash}`,
+          content: `LeashPay payout ${when}. Owner ${plan.owner} paid ${who} ${amountOf(r.amount, r.token)} through vault ${plan.vault}. ${r.hash ? `Transaction ${r.hash}` : "Transaction hash unknown (the vault confirmed the payment as already made)"}. Plan ref ${plan.ref}.`,
+          // Without a hash, the plan and row identify the payment.
+          originRef: `${prefix}paid:${r.hash ?? `${plan.id}:${r.index}`}`,
         },
       ];
     }
