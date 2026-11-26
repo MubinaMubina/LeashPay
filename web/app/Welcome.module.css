@@ -21,21 +21,20 @@
 .network::before { content: ""; width: 7px; height: 7px; background: #bb8b20; border-radius: 50%; }
 
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
-  align-items: center;
-  gap: clamp(20px, 3.8vw, 52px);
-  padding-block: clamp(48px, 6vw, 85px);
+  text-align: center;
+  padding-block: clamp(56px, 6.2vw, 86px) clamp(48px, 5.3vw, 72px);
 }
+.intro { max-width: 1050px; margin-inline: auto; }
 .intro h1 {
   margin: 0;
-  font: 500 clamp(46px, 5.7vw, 80px)/1.01 var(--serif);
+  font: 500 clamp(52px, 6.4vw, 86px)/1.025 var(--serif);
   letter-spacing: -.054em;
   text-wrap: balance;
 }
 .phrases {
   display: grid;
-  margin-top: 12px;
+  margin-top: 14px;
+  text-wrap: balance;
   min-width: 0;
   color: var(--green);
   font: italic 600 clamp(25px, 2.5vw, 36px)/1.15 var(--serif);
@@ -47,8 +46,8 @@
 @media (prefers-reduced-motion: reduce) {
   .phrases span { grid-area: auto; opacity: 1; transition: none; }
 }
-.intro p { max-width: 440px; margin: 20px 0 26px; color: var(--muted); font-size: clamp(16px, 1.4vw, 18px); line-height: 1.55; }
-.actions { flex-wrap: wrap; gap: 4px 22px; }
+.intro p { max-width: 49ch; margin: 20px auto 25px; color: var(--muted); font-size: clamp(16px, 1.4vw, 18px); line-height: 1.55; text-wrap: balance; }
+.actions { flex-wrap: wrap; justify-content: center; gap: 4px 22px; }
 .actions a, .signIn { font-size: 15px; }
 .actions a { gap: 8px; justify-content: center; }
 .signIn {
@@ -63,17 +62,11 @@
 }
 .signIn:hover:enabled { background: var(--green); }
 .signIn:disabled { opacity: .65; cursor: wait; }
-.watermark {
-  display: block;
-  width: clamp(144px, 20vw, 256px);
-  height: auto;
-  justify-self: center;
-  opacity: .12;
-  pointer-events: none;
-}
 
 .example {
   display: grid;
+  max-width: 960px;
+  margin-inline: auto;
   grid-template-columns: 1fr 1fr;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -109,10 +102,9 @@
   .page { padding: 0 max(20px, env(safe-area-inset-right)) 28px max(20px, env(safe-area-inset-left)); }
   .header { min-height: 60px; }
   .layout { max-width: 480px; }
-  .hero { position: relative; isolation: isolate; grid-template-columns: 1fr; padding-block: 36px 26px; }
-  .intro h1 { font-size: clamp(43px, 9.4vw, 57px); }
-  .intro p { margin: 14px 0 18px; }
-  .watermark { position: absolute; z-index: -1; top: 18px; right: 0; width: clamp(76px, 23vw, 110px); opacity: .08; }
+  .hero { padding-block: 48px 38px; }
+  .intro h1 { font-size: clamp(43px, 10.7vw, 57px); }
+  .intro p { margin: 17px auto 21px; }
   .example { grid-template-columns: 1fr; }
   .request { border-radius: 16px 16px 0 0; }
   .request blockquote { font-size: 23px; margin-top: 4px; }

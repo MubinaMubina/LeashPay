@@ -1,7 +1,6 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
@@ -56,7 +55,7 @@ export default function Home() {
           <div className={styles.intro}>
             <h1 id="welcome-title">Tell LeashPay who to pay</h1>
             <PayoutTagline />
-            <p>Pay contractors in USDT or USDC from a vault that enforces your spending limits.</p>
+            <p>Pay in USDT or USDC from a vault that enforces your spending limits.</p>
             <div className={styles.actions}>
               <button className={styles.signIn} type="button" disabled={!ready} onClick={() => login()}>
                 Continue with email
@@ -64,7 +63,6 @@ export default function Home() {
               <Link href="/workspace">Explore workspace <span aria-hidden="true">→</span></Link>
             </div>
           </div>
-          <Image className={styles.watermark} src="/icon.svg" alt="" width={256} height={256} />
         </section>
         <section className={styles.example} id="example-payout" aria-labelledby="example-title" tabIndex={-1}>
           <figure className={styles.request}>
