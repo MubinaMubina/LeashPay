@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
 import { MoneyActions } from "@/components/MoneyActions";
+import { CashFlow } from "@/components/CashFlow";
 
 const { auth, wallet, api, send } = vi.hoisted(() => ({
   auth: { ready: true, authenticated: false, user: null as { id: string } | null },
@@ -31,7 +32,7 @@ describe("public workspace", () => {
     }
     if (state === "owner") wallet.current = { address: "0x1111111111111111111111111111111111111111" };
     const html = renderToStaticMarkup(createElement(Home));
-    for (const name of ["Payment chat", "Recipients", "Your vault", "History"]) expect(html).toMatch(new RegExp('role="tab"[^>]+>' + name + '<'));
+    for (const name of ["Payment chat", "Recipients", "Your vault", "Cash flow"]) expect(html).toMatch(new RegExp('role="tab"[^>]+>' + name + '<'));
     expect(html).toContain('aria-label="Message the agent"');
     expect(api).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
@@ -41,5 +42,15 @@ describe("public workspace", () => {
     expect(html).toContain("Bank transfer");
     expect(html).toContain("Coming soon");
     expect(html).not.toMatch(/Apple Pay|<select/);
+  });
+  it.each(["History", "30-day forecast"] as const)("mounts only %s on entry to Cash flow", view => {
+    const history = vi.fn(() => null);
+    const forecast = vi.fn(() => null);
+    const html = renderToStaticMarkup(createElement(CashFlow, {
+      view, onSelect: vi.fn(), history: createElement(history), forecast: createElement(forecast),
+    }));
+    expect(html).toContain(`aria-selected="true" aria-controls="cash-panel-${view === "History" ? 0 : 1}"`);
+    expect(history).toHaveBeenCalledTimes(view === "History" ? 1 : 0);
+    expect(forecast).toHaveBeenCalledTimes(view === "30-day forecast" ? 1 : 0);
   });
 });

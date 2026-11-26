@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { encodeFunctionData, getAddress, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { explorerAddress, shortAddress } from "@/lib/chain";
@@ -11,7 +11,9 @@ import { Skeleton } from "./Skeleton";
 import { Chat } from "./Chat";
 import { AccessNotice, type AccessPrompt } from "./AccessNotice";
 import { MoneyActions } from "./MoneyActions";
-import { Runway } from "./Runway";
+import { ForecastShortcut, Runway, useRunway } from "./Runway";
+import { CashFlow, type CashFlowView } from "./CashFlow";
+import { TabList } from "./TabList";
 import { useRecipientBook } from "@/lib/recipient-book";
 import { PaymentHistory } from "./PaymentHistory";
 import { Recipients } from "./Recipients";
@@ -67,7 +69,7 @@ function useDepegThreshold(vault: Address | null): [number, (value: number) => v
 /** How long the vault column shows a reaction (balance changed, or "unchanged" after an attack). */
 const REACTION_MS = 4_000;
 
-const WORKSPACE_TABS = ["Payment chat", "Recipients", "Your vault", "History"] as const;
+const WORKSPACE_TABS = ["Payment chat", "Recipients", "Your vault", "Cash flow"] as const;
 type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
 const PHONE_QUERY = "(max-width: 799px)";
@@ -81,20 +83,38 @@ const serverMobile = () => false;
 
 export function Dashboard({ owner, vault, access }: { owner: Address | null; vault: Address | null; access: AccessPrompt | null }) {
   const [tab, setTab] = useState<WorkspaceTab>("Payment chat");
+  const [cashView, setCashView] = useState<CashFlowView>("History");
   const book = useRecipientBook(vault);
   const [listRequest, setListRequest] = useState(0);
   const [directoryOpened, setDirectoryOpened] = useState(false);
-  const tabs = useRef<HTMLDivElement>(null);
   const selectTab = (next: WorkspaceTab, focus = false) => {
     if (next === "Recipients") setDirectoryOpened(true);
+    if (next === "Cash flow" && tab !== next) setCashView("History");
     setTab(next);
-    if (focus) tabs.current?.querySelectorAll<HTMLButtonElement>("button")[WORKSPACE_TABS.indexOf(next)]?.focus();
+    if (focus) document.getElementById(`tab-${WORKSPACE_TABS.indexOf(next)}`)?.focus();
   };
-  const accessNotice = access && <AccessNotice prompt={access} onViewVault={() => {
+  const viewVault = () => {
     selectTab("Your vault");
     requestAnimationFrame(() => activation.current?.focus());
-  }} />;
+  };
+  const accessNotice = access && <AccessNotice prompt={access} onViewVault={viewVault} />;
   const mobile = useSyncExternalStore(subscribeToWidth, readMobile, serverMobile);
+  const forecastOpen = tab === "Cash flow" && cashView === "30-day forecast";
+  const vaultVisible = !mobile || tab === "Your vault";
+  const forecastMode = forecastOpen ? "forecast" : vaultVisible ? "summary" : null;
+  const runway = useRunway(vault && forecastMode);
+  const focusForecast = useRef(false);
+  useLayoutEffect(() => {
+    if (forecastOpen && focusForecast.current) {
+      document.getElementById("cash-tab-1")?.focus();
+      focusForecast.current = false;
+    }
+  }, [forecastOpen]);
+  const forecastShortcut = !forecastOpen && <ForecastShortcut data={runway.data} onOpen={() => {
+    focusForecast.current = true;
+    setCashView("30-day forecast");
+    setTab("Cash flow");
+  }} />;
   const dashboard = useRef<HTMLElement>(null);
   const activation = useRef<HTMLDivElement>(null);
   const api = useApi();
@@ -214,6 +234,7 @@ export function Dashboard({ owner, vault, access }: { owner: Address | null; vau
             </div>
           </>
         ) : !vaultError && <Skeleton label="Loading balances and spending" />}
+        {!mobile && forecastShortcut}
         <details className="vault-details">
           <summary>Vault rules</summary>
           {vault && <a href={explorerAddress(vault)} target="_blank" rel="noreferrer">{shortAddress(vault)} ↗</a>}
@@ -257,21 +278,8 @@ export function Dashboard({ owner, vault, access }: { owner: Address | null; vau
   return (
     <main ref={dashboard} className="dashboard">
       <div className="main-col">
-        <div className="workspace-tabs" ref={tabs} role="tablist" aria-label="Workspace">
-          {WORKSPACE_TABS.map((name, index) => (
-            <button key={name} id={`tab-${index}`} role="tab" aria-selected={tab === name}
-              aria-controls={`panel-${index}`} tabIndex={tab === name ? 0 : -1}
-              onClick={() => selectTab(name)}
-              onKeyDown={(event) => {
-                const { key } = event;
-                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) return;
-                event.preventDefault();
-                const count = WORKSPACE_TABS.length;
-                const next = key === "Home" ? 0 : key === "End" ? count - 1 : (index + (key === "ArrowRight" ? 1 : count - 1)) % count;
-                selectTab(WORKSPACE_TABS[next], true);
-              }}>{name}</button>
-          ))}
-        </div>
+        <TabList names={WORKSPACE_TABS} selected={tab} onSelect={selectTab} label="Workspace" className="workspace-tabs"
+          shortNames={mobile ? { "Payment chat": "Chat", "Your vault": "Vault" } : undefined} />
         {agentDown && <div className="banner">Can’t reach the payment agent. Try again in a moment.</div>}
         {paused && <div className="banner">Vault paused. Unpause your vault to resume agent payments.</div>}
         <section className="workspace-panel chat-panel" id="panel-0" role="tabpanel" aria-labelledby="tab-0" hidden={tab !== "Payment chat"}>
@@ -287,17 +295,29 @@ export function Dashboard({ owner, vault, access }: { owner: Address | null; vau
             <summary>Balance and rules {status}</summary>
             {vaultPanel}
           </details>}
-          {tab === "Your vault" && <Runway key={vault ?? "guest"} hasVault={Boolean(vault)}
-            onPlan={() => selectTab("Payment chat", true)} />}
+          {mobile && forecastShortcut}
           <MoneyActions active={tab === "Your vault"} />
           {access && <div ref={activation} tabIndex={-1}><AccessNotice prompt={access} /></div>}
         </section>
-        <section id="panel-3" role="tabpanel" aria-labelledby="tab-3" className="workspace-panel history-panel" hidden={tab !== "History"}>
-          <header className="directory-head"><h1>History</h1></header>
-          {tab === "History" && (owner ? <PaymentHistory book={book} vault={vault} /> : accessNotice)}
+        <section id="panel-3" role="tabpanel" aria-labelledby="tab-3" className="workspace-panel" hidden={tab !== "Cash flow"}>
+          {tab === "Cash flow" && <CashFlow view={cashView} onSelect={setCashView}
+            history={owner ? <PaymentHistory book={book} vault={vault} /> : access?.state === "guest" ?
+              <AccessNotice prompt={{ ...access, title: "Log in to view payment history",
+                detail: "See confirmed payments you’ve sent and received through LeashPay." }} /> : accessNotice}
+            forecast={vault ? <Runway runway={runway} onPlan={() => selectTab("Payment chat", true)} />
+              : access && <ForecastAccess prompt={access} onViewVault={viewVault} />} />}
         </section>
       </div>
       {!mobile && <aside className="vault-col" aria-label="Your vault">{vaultPanel}</aside>}
     </main>
   );
+}
+
+function ForecastAccess({ prompt, onViewVault }: { prompt: AccessPrompt; onViewVault: () => void }) {
+  if (prompt.state === "checking" || prompt.state === "activating") return <Skeleton variant="runway" label={prompt.title} />;
+  if (prompt.state === "unavailable") return <AccessNotice prompt={prompt} />;
+  return <AccessNotice onViewVault={onViewVault} prompt={{
+    ...prompt, title: prompt.state === "guest" ? "Log in to view your forecast" : "Activate your vault to see a forecast",
+    detail: "Project your USDT and USDC balances over the next 30 days using your dated payouts.",
+  }} />;
 }

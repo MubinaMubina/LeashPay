@@ -45,12 +45,12 @@ function Forecast({ data }: { data: RunwayData }) {
   const first = projection.firstShortfall[0];
   const tightWeek = projection.weeks.find(week => week.status === "tight");
   return <>
+    <p className="runway-caption">Projected balances on {day(data.end)} · UTC</p>
     <dl className="runway-balances">
       {coins.map(coin => <div key={coin}><dt>{coin}</dt>
         <dd>{amount(projection.closing[coin])}</dd>
         <small>{amount(data.opening[coin])} today</small></div>)}
     </dl>
-    <p className="runway-caption">Projected balances on {day(data.end)} · UTC</p>
     {included.length > 0 && <>
       {first ? <p className="runway-note short"><strong>{first.token} runs short on {day(first.date)}.</strong>{" "}
         Projected shortfall of {amount(first.amount)} {first.token} that day.</p>
@@ -70,14 +70,16 @@ function Forecast({ data }: { data: RunwayData }) {
   </>;
 }
 
-function LiveRunway({ onPlan }: { onPlan: () => void }) {
+export function useRunway(mode: "summary" | "forecast" | null) {
   const api = useApi();
   const [data, setData] = useState<RunwayData | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState<{ planId: string; included: boolean } | null>(null);
   const sequence = useRef(0);
+  const visible = useRef(false);
   const updating = useRef(false);
   const refresh = useCallback(async () => {
+    if (!visible.current) return;
     const request = ++sequence.current;
     const result = await api<RunwayData>("runway");
     if (request !== sequence.current) return;
@@ -91,10 +93,16 @@ function LiveRunway({ onPlan }: { onPlan: () => void }) {
   }, [api]);
 
   useEffect(() => {
-    void refresh();
+    visible.current = Boolean(mode);
+    if (!mode) {
+      setData(null);
+      setError("");
+      return;
+    }
+    if (!updating.current) void refresh();
     const timer = setInterval(() => { if (!updating.current) void refresh(); }, 30_000);
-    return () => { clearInterval(timer); sequence.current++; };
-  }, [refresh]);
+    return () => { clearInterval(timer); visible.current = false; sequence.current++; };
+  }, [mode, refresh]);
 
   async function choose(planId: string, included: boolean) {
     if (updating.current) return;
@@ -104,12 +112,26 @@ function LiveRunway({ onPlan }: { onPlan: () => void }) {
     try {
       const result = await api("runway/inclusion", { body: { planId, included } });
       await refresh();
-      if (!result.ok) setError(result.body.error ?? "Couldn’t save your selection.");
+      if (!result.ok && visible.current) setError(result.body.error ?? "Couldn’t save your selection.");
     } finally {
       updating.current = false;
       setSaving(null);
     }
   }
+  return { data, error, saving, refresh, choose };
+}
+
+export function ForecastShortcut({ data, onOpen }: { data: RunwayData | null; onOpen: () => void }) {
+  const first = data?.projection?.firstShortfall[0];
+  if (!first) return null;
+  return <button type="button" className="forecast-shortcut" onClick={onOpen}>
+    <strong>{first.token} runs short on {day(first.date)}</strong>
+    <span>View forecast <span aria-hidden="true">→</span></span>
+  </button>;
+}
+
+export function Runway({ runway, onPlan }: { runway: ReturnType<typeof useRunway>; onPlan: () => void }) {
+  const { data, error, saving, refresh, choose } = runway;
   return <>
     {error && <p className="error-card" role="alert">{error} <button className="link" onClick={refresh}>Refresh</button></p>}
     {!data && !error && <Skeleton variant="runway" label="Loading balances and dated payouts" />}
@@ -127,15 +149,7 @@ function LiveRunway({ onPlan }: { onPlan: () => void }) {
         </label>)}
       </details> : <div className="runway-empty"><p>No upcoming payouts. Give a payment a due date in chat to include it here.</p>
         <button type="button" className="link" onClick={onPlan}>Plan a payout in chat →</button></div>}
-      <p className="sub runway-basis">Based on liquid USDT and USDC and the dated LeashPay plans you include. Assumes no new deposits or swaps.</p>
+      <p className="sub runway-basis">Based on your liquid USDT and USDC and the dated payouts you include. Assumes no new deposits or swaps.</p>
     </>}
   </>;
-}
-
-export function Runway({ hasVault, onPlan }: { hasVault: boolean; onPlan: () => void }) {
-  return <section className="transfer-card runway" aria-label="30-day runway">
-    <header className="transfer-heading"><h2>30-day runway</h2></header>
-    <p className="runway-intro">See what’s left after upcoming payouts and when your vault may run short.</p>
-    {hasVault ? <LiveRunway onPlan={onPlan} /> : <p className="runway-empty">Your forecast appears here once your vault is active.</p>}
-  </section>;
 }
