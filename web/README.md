@@ -91,6 +91,7 @@ The **Recipients** tab searches the owner's directory by name and shows ten matc
 - **Right after adding**, the owner can type "Pay Ramon 1": the agent reads the directory for each plan.
 - **Deletion:** select the trash icon beside a recipient and confirm. The owner’s wallet disables future payments, then the agent removes the directory entry. A retry checks the vault before requesting another signature. Previous receipts stay available.
 - Select **Edit name** in a recipient’s details to change the name recognized by the chat. The wallet address, receipts and payment preferences stay with the contact. Renaming requires the matching agent route on Railway.
+- Select **Edit currency** to choose the display currency for future payment plans. Local estimates are available in Thai baht (THB), Philippine pesos (PHP) and Vietnamese đồng (VND). Choose US dollars (USD) to show the stablecoin amount alone. This preference is saved without a wallet signature.
 - Select **Edit cap** on an authorized recipient to change the combined USDT/USDC limit for the 30-day period. The owner confirms the change in their wallet. Payments already made still count, including when the new limit is lower than the amount already spent.
 
 ### The live attack

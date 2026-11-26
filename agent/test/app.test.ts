@@ -444,6 +444,22 @@ describe("the recipient directory", () => {
     expect(result).toContainEqual({ name: "Marco", address: MARCO, country: "TH", currency: "THB", preferredToken: "USDC" });
   });
 
+  it("sets a missing display currency without undoing a rename or changing the payment token", async () => {
+    const api = app();
+    const contact = { name: "Marco", address: MARCO, country: "PH", preferredToken: "USDC" };
+    await api.request("/directory", json({ owner: OWNER, ...contact }));
+    await api.request("/directory/rename", json({ owner: OWNER, address: MARCO, expectedName: "Marco", name: "MARCO" }));
+    const update = { owner: OWNER, address: MARCO, name: "Marco", country: "PH", currency: "THB", expectedDetails: { country: "PH" } };
+    const expected = { ...contact, name: "MARCO", currency: "THB" };
+    const saved = await api.request("/directory", json(update));
+    expect(saved.status).toBe(201);
+    expect(await saved.json()).toContainEqual(expected);
+    expect((await api.request("/directory", json(update))).status).toBe(200);
+    expect((await api.request("/directory", json({ ...update, currency: "PHP" }))).status).toBe(409);
+    await createPlan(api, "Pay Marco 1");
+    expect(planner.mock.calls.at(-1)?.[0].directory).toContainEqual(expected);
+  });
+
   it("renames one contact in place, preserves metadata, and exposes the new name to the planner", async () => {
     const api = app();
     const contact = { name: "Marco", address: MARCO, country: "PH", currency: "PHP", preferredToken: "USDC" };

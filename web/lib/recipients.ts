@@ -2,11 +2,7 @@ import { getAddress, isAddress, parseUnits, zeroAddress, type Address } from "vi
 import { DEMO_ATTACK_ADDRESS } from "./demo";
 import { FX_CURRENCIES } from "./fx";
 
-/**
- * Local currencies the owner can pick: the ones the app shows rates for, plus USD for
- * no conversion (the coins already track the dollar).
- */
-export const CURRENCIES = [...FX_CURRENCIES, "USD"] as const;
+export const CURRENCIES = FX_CURRENCIES;
 export type Currency = (typeof CURRENCIES)[number];
 
 /** Same limits as the agent's directory (agent/src/plan/directory.ts). */

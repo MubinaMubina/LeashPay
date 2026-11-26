@@ -219,6 +219,7 @@ export function createApp(deps: AppDeps) {
         if (!expectedDetails || current.country !== expectedDetails.country || current.currency !== expectedDetails.currency) {
           throw new DirectoryRuleError("Contact details changed. Review the current details before saving.");
         }
+        entry.name = current.name;
         entry.preferredToken = current.preferredToken;
       } else if (expectedDetails) {
         throw new DirectoryRuleError("This contact is no longer in your directory. Review it again.");
