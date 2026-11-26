@@ -10,6 +10,8 @@ export interface OwnerVault {
   factory: Address;
 }
 
+type SendAndWait = (to: Address, data: Hex) => Promise<Hex>;
+
 async function vaultAt(owner: Address, factory: Address): Promise<Address | null> {
   const vault = await publicClient.readContract({
     address: factory, abi: leashVaultFactoryAbi, functionName: "vaultOf", args: [owner],
@@ -31,8 +33,8 @@ export async function readOwnerVault(owner: Address): Promise<Address | null> {
 }
 
 /** Only called when the owner explicitly chooses to enable on-chain payments. */
-export async function activatePaymentVault(owner: Address, sendAndWait: (to: Address, data: Hex) => Promise<Hex>, sponsor?: SponsoredActionRunner) {
-  const existing = await readOwnerVault(owner);
+export async function activateOwnerVault(owner: Address, sendAndWait: SendAndWait, sponsor?: SponsoredActionRunner): Promise<OwnerVault> {
+  const existing = await resolveOwnerVault(owner);
   if (existing) return existing;
   let sponsoredVault: Address | undefined;
   if (sponsor) {
@@ -48,5 +50,9 @@ export async function activatePaymentVault(owner: Address, sendAndWait: (to: Add
   if (!vault || (sponsoredVault && vault.toLowerCase() !== sponsoredVault.toLowerCase())) {
     throw new Error("Vault creation was submitted. Check again in a moment to open your confirmed vault.");
   }
-  return vault;
+  return { address: vault, factory: FACTORY_ADDRESS };
+}
+
+export async function activatePaymentVault(owner: Address, sendAndWait: SendAndWait, sponsor?: SponsoredActionRunner): Promise<Address> {
+  return (await activateOwnerVault(owner, sendAndWait, sponsor)).address;
 }

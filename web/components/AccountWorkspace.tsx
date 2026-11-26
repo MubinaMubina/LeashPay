@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { errorText, useSendAndWait, useSponsoredAction } from "@/lib/client";
-import { activatePaymentVault, resolveOwnerVault, type OwnerVault } from "@/lib/onboarding";
+import { activateOwnerVault, resolveOwnerVault, type OwnerVault } from "@/lib/onboarding";
 import { recipientAuthorizationFor } from "@/lib/sponsorship";
 import { Dashboard } from "./Dashboard";
 import { RecipientAuthorizationContext } from "./RecipientForm";
@@ -40,8 +40,7 @@ export function AccountWorkspace({ owner, guest, login }: { owner: Address | nul
     setPhase("activating");
     setError("");
     try {
-      await activatePaymentVault(owner, sendAndWait, sponsor);
-      retry();
+      setVault(await activateOwnerVault(owner, sendAndWait, sponsor));
     } catch (err) {
       setError(errorText(err));
       retry();

@@ -2,7 +2,7 @@ import { decodeFunctionData, type Address, type Hex, zeroAddress } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { AddRecipientForm, RecipientAuthorizationContext } from "@/components/RecipientForm";
-import { activatePaymentVault, readOwnerVault } from "@/lib/onboarding";
+import { activateOwnerVault, activatePaymentVault, readOwnerVault } from "@/lib/onboarding";
 import * as sponsorship from "@/lib/sponsorship";
 
 const { readContract, getBalance } = vi.hoisted(() => {
@@ -79,7 +79,8 @@ describe("returning owners on the published sponsored deployment", () => {
       registry(newVault, zeroAddress);
       return newVault;
     });
-    expect(await activatePaymentVault(owner, vi.fn(), relay)).toBe(newVault);
+    expect(await activateOwnerVault(owner, vi.fn(), relay)).toEqual({ address: newVault, factory: sponsoredFactory });
+    expect(readContract.mock.calls.map(([call]) => call.address)).toEqual([sponsoredFactory, legacyFactory, sponsoredFactory]);
     expect(relay).toHaveBeenCalledExactlyOnceWith({ action: "activate" });
   });
 });
