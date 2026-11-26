@@ -56,6 +56,9 @@ export function PlanCard({
   const [run, setRun] = useState<Run>({ kind: "idle" });
   const [now, setNow] = useState(() => Date.now());
   const [attack, setAttack] = useState<Attack>({ stage: "idle" });
+  // The guard's own sentence is shown inside the depeg box, not again in the notes list.
+  const depegNote = plan.depeg?.note;
+  const notes = depegNote ? plan.notes.filter((n) => n !== depegNote) : plan.notes;
 
   const refreshEvents = useCallback(async () => {
     const latest = await api<{ events: JournalEventJson[] }>(`plans/${plan.id}`);
@@ -161,9 +164,9 @@ export function PlanCard({
 
       {plan.depeg && <DepegBox depeg={plan.depeg} />}
 
-      {plan.notes.length > 0 && (
+      {notes.length > 0 && (
         <ul className="notes">
-          {plan.notes.map((note, i) => (
+          {notes.map((note, i) => (
             <li key={i}>{note}</li>
           ))}
         </ul>

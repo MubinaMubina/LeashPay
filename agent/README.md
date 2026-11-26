@@ -2,7 +2,7 @@
 
 The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 1st"*, into a payment plan. It shows the owner what the vault will say about each payment, and once the owner approves the plan with a wallet signature, it pays through the vault with its own key. The agent plans; the vault decides. Its key can only call the vault's agent functions, so even a tricked or hacked agent stays inside the owner's rules.
 
-**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (182 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). Currency conversion (CoinMarketCap), the depeg guard (Cournot) and memory (Living Brain) are separate branches still to come.
+**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (230 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). The [depeg guard](#depeg-guard-cournot) asks Cournot before each payment plan which stablecoin to pay in. Currency conversion (CoinMarketCap) and memory (Living Brain) are separate branches still to come.
 
 ## How a payment flows
 
@@ -10,9 +10,12 @@ The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 
 owner message ──▶ POST /plans
                     1. Claude Opus 5.5, one structured call: message + the owner's
                        recipient directory + vault balance in, a typed plan draft out
-                    2. plain code checks the draft: addresses, amounts (no floats),
+                    2. the depeg guard (only when the owner has a vault and the message
+                       pays someone): Cournot's live USDC depeg risk against the owner's
+                       limit picks USDT or USDC
+                    3. plain code checks the draft: addresses, amounts (no floats),
                        unknown recipients, a name that doesn't match its address
-                    3. every payment is SIMULATED against the vault, in parallel: the
+                    4. every payment is SIMULATED against the vault, in parallel: the
                        owner sees the vault's verdict ("Blocked: 0xBAD… isn't on your
                        recipient list"), plus a note when the payments together exceed
                        the balance or today's limit
@@ -64,6 +67,7 @@ Requirements: Node.js 22 or newer.
 3. Fill in the root `.env`:
    - `ANTHROPIC_API_KEY`: your Claude API key. The old name `LLM_API_KEY` is still read.
    - `FACTORY_ADDRESS`: once Builder A has deployed the contracts.
+   - `COURNOT_API_KEY` (optional): Cournot's free quota works without it; once that is used up, the depeg guard needs a credited key.
    - `AGENT_HOST` (optional): leave it empty, or set a loopback address such as `127.0.0.1`, to stay on this machine. Any other value, such as `0.0.0.0`, also needs `AGENT_API_TOKEN`, which callers then send as `Authorization: Bearer <token>`. The token is for server-to-server calls only; never put it in the browser.
 
 4. Start the server:
@@ -84,7 +88,7 @@ Without `FACTORY_ADDRESS` the server still plans, but there is no vault to check
 | `GET /directory?owner=0x…` | That owner's recipient directory (names, addresses, country, currency, preferred coin). |
 | `POST /directory` | Adds or updates one of the owner's recipients: `{ owner, name, address, country?, currency?, preferredToken? }`. Names are unique per owner, at most 60 characters, on one line; an owner keeps at most 200 recipients. |
 | `GET /vaults/:owner` | The owner's vault: owner, agent, paused, rules, today's spend and swaps, balances. 404 if they have none. |
-| `POST /plans` | `{ owner, message }` → a plan with warnings, notes and the vault's simulated verdict per payment. Sends nothing. |
+| `POST /plans` | `{ owner, message, depegThreshold? }` → a plan with warnings, notes and the vault's simulated verdict per payment. `depegThreshold` is the owner's depeg limit in percent (0 to 100, default 5); the plan's `depeg` field holds the guard's decision. Sends nothing. |
 | `GET /plans/:id` | The plan and every journal event for it. |
 | `GET /plans/:id/approval` | `{ message, expires, payEarly }`: the text the owner's wallet signs to run the plan, valid 10 minutes. Add `?payEarly=true` to run a dated plan before its day. |
 | `POST /plans/:id/execute` | `{ expires, signature, payEarly }` from the approval and the owner's wallet → runs the plan. Each approval runs once; to run the plan again, get and sign a fresh one. Payments that went through are never repeated, and "pending" ones are settled. |
@@ -121,8 +125,19 @@ curl -X POST http://localhost:8787/plans/<id>/execute \
 
 Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can run from 07:00 Bangkok time.
 
+## Depeg guard (Cournot)
+
+Before a payment plan is built, the agent asks Cournot's Intelligence Oracle one fixed claim: "Will USDC depeg below $0.98 for 24 consecutive hours by December 31, 2026?". It resolves the one matching market (title, YES outcome, the 98-cent and 24-hour wording, and settlement on 1 Jan 2027 05:00 UTC, as in `scripts/demo_oracles.py`), then reads its probability and sources.
+
+- **The coin:** above the owner's limit, every payment is in USDT, including one where the owner named USDC (that row says so). Within the limit, payments are in USDC, except where the owner named USDT. The guard's coin also replaces a recipient's saved coin preference. The risk is compared at the precision the owner reads (0.01%), so a risk that prints as equal to the limit counts as within it.
+- **What the owner sees and signs:** the plan card shows Cournot's exact claim, the probability against the limit, up to 10 sources with links, the date and time of the reading (UTC), the market id and Cournot's request id. One sentence with the probability, the reading's date and time and the chosen coin goes into the text the owner signs. It is stored apart from Claude's notes (`plan.depeg.note`), and a Claude note that starts like it is marked "From Claude:", so model text can't pass for the guard.
+- **When Cournot fails:** the plan keeps the coins it was planned with and says why ("Cournot didn't answer within 45 s.", "HTTP 402: the free quota is used up", and so on). The vault's on-chain price floor still applies. Nothing is ever guessed or mocked.
+- **Cost and speed:** both calls share one 45-second deadline, which keeps a plan inside the web page's 150-second timeout unless the Claude call itself needs its retries. One reading serves every plan for 10 minutes; after a failure, plans answer "unavailable" at once for 30 seconds. Plans with no vault, or with nothing that can be paid, don't call Cournot.
+- **The claim's deadline:** the claim ends on 31 Dec 2026. The guard keeps asking until the market settles on 1 Jan 2027 05:00 UTC, because a depeg already under way on 31 Dec can still last its 24 hours; after that it stops calling Cournot and reports "unavailable". In late December the probability also falls toward 0 because time is running out, not because USDC is safer, so the guard needs a newer market or claim before then.
+
 ## Known limits
 
+- The depeg decision is taken when the plan is made. The signed text shows the reading's time, but a plan approved hours later still pays in the coin chosen then.
 - A dated plan doesn't run by itself on its day; someone runs it (an automatic scheduler is later work).
 - The agent runs one plan at a time: while one runs, another owner's run gets 409 and has to be retried.
 - Owners sign with plain wallets (Privy's embedded wallets are plain wallets). Smart-contract wallets aren't accepted yet.
@@ -142,6 +157,8 @@ Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can ru
 | `src/plan/planner.ts` | The Claude call: message in, validated `PlanDraft` out |
 | `src/plan/schema.ts` | The plan schema Claude must fill |
 | `src/plan/build.ts` | Plain-code checks that turn a draft into an executable plan; due dates; plan-wide limits |
+| `src/depeg/cournot.ts` | The Cournot client: resolves the USDC depeg market, reads its probability and sources, refuses anything it can't verify |
+| `src/depeg/guard.ts` | The depeg guard: the owner's limit against Cournot's reading picks USDT or USDC; caches readings and failures |
 | `src/plan/directory.ts` | Each owner's recipient directory (`agent/data/recipients.json`, git-ignored) |
 | `src/chain/gateway.ts` | The interface for everything on-chain |
 | `src/chain/viem-gateway.ts` | Its BSC testnet implementation with viem: simulate, sign, broadcast, finality, Paid-event check |
@@ -157,7 +174,7 @@ Days are UTC everywhere, like the vault's daily limit: a plan for the 1st can ru
 ## Tests
 
 ```bash
-npm test          # 182 tests; no API key, chain or network needed
+npm test          # 230 tests; no API key, chain or network needed
 npm run build     # type-check
 npm run abi:check # the generated ABI matches the Solidity interfaces
 npm run check:demo # the two demo messages give the plans the demo needs, 3 runs each against the real Claude (about 6 calls; needs the Claude key)

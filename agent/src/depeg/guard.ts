@@ -11,6 +11,8 @@ import { CournotError, readDepeg, type DepegReading, type DepegSource } from "./
 export const DEFAULT_THRESHOLD_PERCENT = 5;
 /** Cournot's paid quota is precious: one reading serves every plan for this long. */
 const CACHE_MS = 10 * 60 * 1000;
+/** After a failed call, plans answer "unavailable" at once for this long instead of waiting on Cournot again. */
+const FAILURE_MS = 30 * 1000;
 
 export type DepegDecision =
   | {
@@ -29,9 +31,17 @@ export type DepegDecision =
     }
   | { available: false; threshold: number; reason: string };
 
-/** USDT when the USDC depeg probability is above the threshold, otherwise USDC. */
+/** A probability (0 to 1) or a percent, in hundredths of a percent: the precision the owner reads. */
+const hundredths = (probability: number) => Math.round(probability * 10_000);
+
+/**
+ * USDT when the USDC depeg risk, as the owner reads it (to 0.01%), is strictly above the threshold;
+ * otherwise USDC. Deciding on the printed value keeps the signed sentence true: 0.05004 reads "5%",
+ * so against a 5% limit it is within, never "5% above your 5% limit". Comparing whole hundredths
+ * also avoids float drift (0.035 * 100 is 3.5000000000000004).
+ */
 export function chooseToken(probability: number, thresholdPercent: number): TokenSymbol {
-  return probability * 100 > thresholdPercent ? "USDT" : "USDC";
+  return hundredths(probability) > hundredths(thresholdPercent / 100) ? "USDT" : "USDC";
 }
 
 export interface DepegGuard {
@@ -43,9 +53,11 @@ export function createDepegGuard(options: { read?: () => Promise<DepegReading>; 
   const now = options.now ?? Date.now;
   let cached: { until: number; reading: DepegReading } | null = null;
   let inFlight: Promise<DepegReading> | null = null;
+  let failed: { until: number; reason: string } | null = null;
 
   async function reading(): Promise<DepegReading> {
     if (cached && cached.until > now()) return cached.reading;
+    if (failed && failed.until > now()) throw new CournotError(failed.reason);
     // Plans made at the same moment share one Cournot call.
     inFlight ??= read().finally(() => {
       inFlight = null;
@@ -72,13 +84,14 @@ export function createDepegGuard(options: { read?: () => Promise<DepegReading>; 
           requestId: r.requestId,
         };
       } catch (err) {
-        // A failed call is never cached, so the next plan tries again.
+        // Remembered briefly, so plans made during an outage don't each wait out the deadline.
         const reason = err instanceof CournotError ? err.message : "Cournot couldn't be reached.";
+        if (!(failed && failed.until > now())) failed = { until: now() + FAILURE_MS, reason };
         return { available: false, threshold: thresholdPercent, reason };
       }
     },
   };
 }
 
-/** "3.2%": Cournot's probability as the owner reads it. */
-export const percent = (probability: number) => `${Number((probability * 100).toFixed(2))}%`;
+/** "3.2%": Cournot's probability as the owner reads it, to 0.01%. */
+export const percent = (probability: number) => `${hundredths(probability) / 100}%`;

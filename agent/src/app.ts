@@ -6,7 +6,7 @@ import { BaseError, formatUnits, keccak256, toHex, type Address, type Hex } from
 import { z } from "zod";
 import type { DeploymentConfig, VaultGateway, VaultSnapshot } from "./chain/gateway";
 import { ConfigurationError, DEMO_ATTACK_ADDRESS } from "./config";
-import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegGuard } from "./depeg/guard";
+import { DEFAULT_THRESHOLD_PERCENT, percent, type DepegDecision, type DepegGuard } from "./depeg/guard";
 import { APPROVAL_TTL_MS, approvalMessage, signedByOwner } from "./execution/approval";
 import { AgentBusyError, AttackRefusedError, type Executor } from "./execution/executor";
 import type { Journal } from "./execution/journal";
@@ -65,21 +65,19 @@ function input<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
 }
 
 /**
- * Asks the depeg guard which stablecoin to pay in, before the vault's checks run, and records
- * the decision on the plan. Its note becomes part of the text the owner signs.
+ * The depeg guard's sentence on the plan. It becomes part of the text the owner signs, so it
+ * carries the reading's time: an old reading is visible before signing.
  */
-async function applyDepegGuard(guard: DepegGuard, plan: Plan, threshold: number): Promise<void> {
-  const decision = await guard.decide(threshold);
-  plan.depeg = decision;
-  if (!decision.available) {
-    plan.notes.push(`Depeg guard: ${decision.reason} The plan keeps its coins; the vault's price floor still applies.`);
-    return;
-  }
-  for (const payment of plan.payments) if (isExecutable(payment)) payment.token = decision.chosenToken;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function depegNote(decision: DepegDecision, plan: Plan): string {
+  if (!decision.available) return `Depeg guard: ${decision.reason} The plan keeps its coins; the vault's price floor still applies.`;
   const side = decision.chosenToken === "USDT" ? "above" : "within";
-  plan.notes.push(
-    `Depeg guard: Cournot puts USDC's depeg risk at ${percent(decision.probability)}, ${side} your ${decision.threshold}% limit, so every payment is in ${decision.chosenToken}.`,
-  );
+  const read = new Date(decision.fetchedAt);
+  const at = `${read.getUTCDate()} ${MONTHS[read.getUTCMonth()]} ${decision.fetchedAt.slice(11, 16)}`;
+  const all = plan.payments.filter(isExecutable).every((p) => p.token === decision.chosenToken);
+  const coins = all ? `every payment is in ${decision.chosenToken}` : `payments are in ${decision.chosenToken} unless you named another coin`;
+  return `Depeg guard: Cournot puts USDC's depeg risk at ${percent(decision.probability)} (reading from ${at} UTC), ${side} your ${decision.threshold}% limit, so ${coins}.`;
 }
 
 const CreatePlanBody = z.object({
@@ -218,9 +216,18 @@ export function createApp(deps: AppDeps) {
           }
         : undefined,
     });
-    const plan = buildPlan(draft, { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at });
-    if (deps.depeg && plan.kind === "payment" && plan.payments.some(isExecutable)) {
-      await applyDepegGuard(deps.depeg, plan, body.depegThreshold ?? DEFAULT_THRESHOLD_PERCENT);
+    const context = { id: newId(), owner: body.owner, vault, message: body.message, directory, now: at };
+    let plan = buildPlan(draft, context);
+    // The guard runs only for a plan that can run (a vault) and pays someone, to save Cournot quota.
+    // Its coin is applied by building again, so merging lines sees the final coin.
+    if (deps.depeg && vault && plan.kind === "payment" && plan.payments.some(isExecutable)) {
+      // The slider's precision: 0.01%.
+      const threshold = Math.round((body.depegThreshold ?? DEFAULT_THRESHOLD_PERCENT) * 100) / 100;
+      const decision = await deps.depeg.decide(threshold);
+      if (decision.available) plan = buildPlan(draft, { ...context, coin: decision.chosenToken });
+      const note = depegNote(decision, plan);
+      plan.depeg = { ...decision, note };
+      plan.notes.push(note);
     }
     if (vault && snapshot) await preview(deps.gateway, vault, snapshot, plan);
 

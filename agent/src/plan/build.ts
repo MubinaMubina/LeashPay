@@ -30,8 +30,11 @@ export interface Plan {
   payments: PlannedPayment[];
   notes: string[];
   createdAt: string;
-  /** The depeg guard's decision (Cournot's USDC depeg risk against the owner's limit), when it ran. */
-  depeg?: DepegDecision;
+  /**
+   * The depeg guard's decision (Cournot's USDC depeg risk against the owner's limit), when it ran,
+   * with its sentence. The sentence is also in `notes` (so the owner signs it); the card reads it from here.
+   */
+  depeg?: DepegDecision & { note: string };
 }
 
 export type ExecutablePayment = PlannedPayment & { recipient: Address; amount: bigint };
@@ -130,7 +133,14 @@ export interface BuildContext {
   message: string;
   directory: RecipientEntry[];
   now: Date;
+  /**
+   * The depeg guard's coin, when it gave one. It decides every payment whose coin the owner
+   * didn't name; a named coin is kept, except that USDC is never paid when the guard says USDT.
+   */
+  coin?: TokenSymbol;
 }
+
+export const SWITCHED_TO_USDT = "You named USDC, but Cournot puts its depeg risk above your limit, so this is paid in USDT.";
 
 /**
  * Turns Claude's draft into a plan the executor can run. This is plain code, not
@@ -139,7 +149,11 @@ export interface BuildContext {
  * recipient once per plan). It never decides who may be paid; the vault does.
  */
 export function buildPlan(draft: PlanDraft, ctx: BuildContext): Plan {
-  const notes = draft.notes.map((note) => oneLine(note, 300));
+  // Claude's notes are model text: one that looks like the depeg guard's sentence is marked as Claude's.
+  const notes = draft.notes.map((note) => {
+    const line = oneLine(note, 300);
+    return /^\s*depeg guard/i.test(line) ? `From Claude: ${line}` : line;
+  });
   const payments: PlannedPayment[] = [];
   const byRecipient = new Map<Address, PlannedPayment>();
 
@@ -172,8 +186,10 @@ export function buildPlan(draft: PlanDraft, ctx: BuildContext): Plan {
       else warnings.push(read.warning);
     }
 
-    const token: TokenSymbol =
-      currency === "USDC" ? "USDC" : currency === "USDT" ? "USDT" : (entry?.preferredToken ?? "USDT");
+    const named: TokenSymbol | null = currency === "USDC" || currency === "USDT" ? currency : null;
+    // Decided here, before merging, so merging and the "already gets" check see the final coin.
+    const switched = named === "USDC" && ctx.coin === "USDT";
+    const token: TokenSymbol = switched ? "USDT" : (named ?? ctx.coin ?? entry?.preferredToken ?? "USDT");
     const recipientName = entry?.name ?? name;
 
     const earlier = recipient ? byRecipient.get(recipient) : undefined;
@@ -184,6 +200,7 @@ export function buildPlan(draft: PlanDraft, ctx: BuildContext): Plan {
       const sameName = earlier.recipientName.toLowerCase() === recipientName.toLowerCase();
       if (sameName && warnings.length === 0 && earlier.token === token && earlier.amount !== null) {
         earlier.amount += amount;
+        if (switched && !earlier.warnings.includes(SWITCHED_TO_USDT)) earlier.warnings.push(SWITCHED_TO_USDT);
         notes.push(`Combined two payments to ${earlier.recipientName} into one: a plan pays each person once.`);
         continue;
       }
@@ -195,6 +212,7 @@ export function buildPlan(draft: PlanDraft, ctx: BuildContext): Plan {
       amount = null;
     }
 
+    if (switched) warnings.push(SWITCHED_TO_USDT);
     const planned: PlannedPayment = { recipientName, recipient, amount, token, warnings };
     if (recipient && amount !== null) byRecipient.set(recipient, planned);
     payments.push(planned);

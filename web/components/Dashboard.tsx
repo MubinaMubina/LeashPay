@@ -5,6 +5,7 @@ import { encodeFunctionData, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { explorerAddress, shortAddress } from "@/lib/chain";
 import { errorText, useApi, useSendAndWait } from "@/lib/client";
+import { parseStoredThreshold } from "@/lib/depeg";
 import { DEMO_RECIPIENTS } from "@/lib/demo";
 import { formatAmount } from "@/lib/plan-progress";
 import { Chat } from "./Chat";
@@ -20,20 +21,38 @@ interface VaultJson {
 
 type Switch = { kind: "idle" } | { kind: "sending" } | { kind: "failed"; error: string };
 
-const THRESHOLD_KEY = "leashpay.depegThreshold";
+/** One saved limit per vault, so a second owner on the same browser doesn't inherit the first one's. */
+const thresholdKey = (vault: Address) => `leashpay.depegThreshold.${vault.toLowerCase()}`;
+/** Mirrors DEFAULT_THRESHOLD_PERCENT in agent/src/depeg/guard.ts. */
 const DEFAULT_THRESHOLD = 5;
+const THRESHOLD_MAX = 20;
 
-/** The owner's depeg limit, kept in this browser (it's the agent's policy, not a vault rule). */
-function useDepegThreshold(): [number, (value: number) => void] {
+/**
+ * The owner's depeg limit, kept in this browser per vault (it's the agent's policy, not a vault rule).
+ * Storage can be blocked (private modes, strict cookie settings): then the limit lives in memory only.
+ */
+function useDepegThreshold(vault: Address): [number, (value: number) => void] {
   const [value, setValue] = useState(DEFAULT_THRESHOLD);
   useEffect(() => {
-    const saved = Number(window.localStorage.getItem(THRESHOLD_KEY));
-    if (window.localStorage.getItem(THRESHOLD_KEY) !== null && Number.isFinite(saved) && saved >= 0 && saved <= 100) setValue(saved);
-  }, []);
-  const set = useCallback((next: number) => {
-    setValue(next);
-    window.localStorage.setItem(THRESHOLD_KEY, String(next));
-  }, []);
+    let saved: number | null = null;
+    try {
+      saved = parseStoredThreshold(window.localStorage.getItem(thresholdKey(vault)), THRESHOLD_MAX);
+    } catch {
+      // storage blocked: keep the default
+    }
+    setValue(saved ?? DEFAULT_THRESHOLD);
+  }, [vault]);
+  const set = useCallback(
+    (next: number) => {
+      setValue(next);
+      try {
+        window.localStorage.setItem(thresholdKey(vault), String(next));
+      } catch {
+        // storage blocked: the limit still applies until the page reloads
+      }
+    },
+    [vault],
+  );
   return [value, set];
 }
 
@@ -54,7 +73,7 @@ export function Dashboard({ vault }: { vault: Address }) {
   const [killSwitch, setKillSwitch] = useState<Switch>({ kind: "idle" });
   const [reaction, setReaction] = useState<"changed" | "unchanged" | null>(null);
   const lastBalance = useRef<string | null>(null);
-  const [depegThreshold, setDepegThreshold] = useDepegThreshold();
+  const [depegThreshold, setDepegThreshold] = useDepegThreshold(vault);
   const clearReaction = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const react = useCallback((kind: "changed" | "unchanged") => {
@@ -152,11 +171,12 @@ export function Dashboard({ vault }: { vault: Address }) {
             className="slider"
             type="range"
             min={0}
-            max={20}
+            max={THRESHOLD_MAX}
             step={0.5}
             value={depegThreshold}
             onChange={(e) => setDepegThreshold(Number(e.target.value))}
-            aria-label="Depeg limit in percent"
+            aria-label="Depeg limit: switch away from USDC above this risk"
+            aria-valuetext={`${depegThreshold}%`}
           />
           <div className="sub">Cournot's USDC depeg risk is checked before each plan. Applies to the next plan you send.</div>
 

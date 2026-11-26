@@ -32,6 +32,9 @@ export type DepegJson =
     }
   | { available: false; threshold: number; reason: string };
 
+/** The guard's decision plus its sentence (the one in the signed text). Older plans have no `note`. */
+export type PlanDepegJson = DepegJson & { note?: string };
+
 export interface PlanJson {
   id: string;
   ref: string;
@@ -44,7 +47,7 @@ export interface PlanJson {
   notes: string[];
   createdAt: string;
   /** The depeg guard's decision (Cournot), when it ran. */
-  depeg?: DepegJson;
+  depeg?: PlanDepegJson;
 }
 
 export type JournalEventJson =

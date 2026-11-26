@@ -17,7 +17,7 @@ LeashPay keeps the money in a smart contract, the **vault**. The AI agent can on
 1. The owner signs in with email (Privy creates a wallet), creates a vault, funds it with test USDT and sets the rules.
 2. The owner adds recipients: name, address, country, local currency, monthly cap. Only the address and the cap go on-chain; names and preferences stay in the agent's memory.
 3. The owner types: *"Pay Linh 300 and Marco 450 on the 1st."* The agent recalls each person's preferences and shows the amounts in Vietnamese dong and Philippine pesos, using CoinMarketCap.
-4. **Depeg guard:** the agent asks Cournot how likely a USDC or USDT depeg is and shows the claim, the probability and the sources. Above the owner's threshold, it pays in the other stablecoin.
+4. **Depeg guard:** the agent asks Cournot how likely USDC is to depeg and shows the claim, the probability and the sources. Above the owner's threshold, it pays in USDT instead of USDC.
 5. The owner approves the plan with one wallet signature; without it the agent sends nothing. The agent then calls the vault, which checks the allowlist, the caps, the cooldown, the allowed coins and the Atlas on-chain price, and pays or refuses with a clear reason.
 6. Between payouts, idle funds sit in a tokenized T-bill (a mock real-world-asset token whose value grows) and are pulled back before the next payout.
 7. Each recipient opens a phone page showing the payments received and their value in local currency.
@@ -71,7 +71,7 @@ The agent's key can never withdraw, change a rule or unpause. The owner can fire
 |---|---|---|
 | **BNB Chain Developer Track** (real-world assets, on-chain AI agents) | The vault lives on BSC testnet and the AI agent acts on-chain through it. The agent can invest idle mUSDT in a mock tokenized T-bill and redeem it for payments. | The agent signed a sponsored deposit, withdrawal and 5 mUSDT payment. [Testnet receipts and balances](contracts/README.md#t-bill-deposit-withdrawal-and-payment). The agent server (plans with Claude, pays through the vault once the owner signs) made its first real payment on 26 Nov: 1 mUSDT to Marco, run by the owner's signature. [Payment on BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc) |
 | **CoinMarketCap × Atlas** | CoinMarketCap Pro API: local-currency amounts (THB, VND, PHP) and price data for payout timing. Atlas on-chain feed: read by the vault itself for the swap slippage check and the depeg floor on every payment. | Both testnet relays mirror real Atlas mainnet observations, preserving source timestamps. Local polling worker implemented. [Sponsored swap and simulated slippage refusal](contracts/deployments/97-atlas-swap.json) verified. CoinMarketCap integration pending. |
-| **Cournot** | The depeg guard: a live probability from Cournot decides which stablecoin each payout uses; the dashboard shows the claim, probability and sources; each on-chain payment carries a `ref` linking to that evidence | Payment `ref` in the frozen interface. Cournot calls not built yet. |
+| **Cournot** | The depeg guard: a live probability from Cournot decides which stablecoin each payout uses; the dashboard shows the claim, probability and sources; each on-chain payment carries a `ref` linking to that evidence | Built in the agent ([depeg guard](agent/README.md#depeg-guard-cournot)): a live Cournot reading before each payment plan picks the coin, and the plan card shows the exact claim, probability, sources, reading time and Cournot request id. Tested on BSC testnet on 26 Nov: lowering the owner's limit switched the plan from USDC to USDT. |
 | **ChatAndBuild Living Brain** | The agent's long-term memory: recipients, their preferences, payout history and past attack attempts, recalled before every plan | Not built yet. |
 
 These statuses are updated as each part lands.
@@ -85,7 +85,7 @@ These statuses are updated as each part lands.
 | [`contracts/deployments/`](contracts/deployments/) | Chain 97 addresses, Atlas observations and receipts for payments, swaps and the T-bill round trip |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
-| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 182 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
+| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 230 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
 | [`web/`](web/) | The web app: Privy email login, vault setup, the owner's chat with the agent (plan, the vault's verdict on each payment, approve with the wallet, payments landing row by row), the kill switch, the live attack the vault refuses, and a recipient phone page. [Setup and design](web/README.md) |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
@@ -93,7 +93,7 @@ These statuses are updated as each part lands.
 All eight deployed addresses now have readable source on BscScan Testnet. The demo vault
 and factory have exact matches. [Contract addresses and verification results](contracts/README.md#contract-sources-on-bscscan)
 
-The roadmap still includes the agent's CoinMarketCap, Cournot and Living Brain integrations,
+The roadmap still includes the agent's CoinMarketCap and Living Brain integrations,
 and the demo video. The team currently prefers Vercel and will confirm the hosting choice at
 deployment, with Cloudflare still an option. For instructions on running the agent, see the
 [agent README](agent/README.md); for the web app, see the [web README](web/README.md).
