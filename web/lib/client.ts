@@ -2,7 +2,7 @@
 
 import { usePrivy, useSendTransaction, useWallets } from "@privy-io/react-auth";
 import { useCallback } from "react";
-import { createPublicClient, http, type Address, type Hex } from "viem";
+import { createPublicClient, http, type Address, type Hex, type TransactionReceipt } from "viem";
 import { chain } from "./chain";
 
 /** Read-only chain access from the browser (eth_call works on the public RPC; log search doesn't). */
@@ -52,11 +52,12 @@ export function useSendAndWait() {
   const { sendTransaction } = useSendTransaction();
   const owner = useOwnerWallet();
   return useCallback(
-    async (to: Address, data: Hex): Promise<Hex> => {
+    async (to: Address, data: Hex, options?: { nonce: number; checkReceipt: (receipt: TransactionReceipt) => void }): Promise<Hex> => {
       if (!owner) throw new Error("Your wallet isn't ready yet.");
-      const { hash } = await sendTransaction({ to, data, chainId: chain.id }, { address: owner.address });
+      const { hash } = await sendTransaction({ to, data, chainId: chain.id, nonce: options?.nonce }, { address: owner.address });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000 });
       if (receipt.status !== "success") throw new Error(`The transaction failed on-chain: ${hash}`);
+      options?.checkReceipt(receipt);
       return hash;
     },
     [sendTransaction, owner],

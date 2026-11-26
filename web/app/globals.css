@@ -481,6 +481,15 @@ summary { cursor: pointer; }
 .contact-fields dt, .history-totals h3 { color: var(--ink-3); }
 .contact-fields dd { margin: 0; text-align: right; }
 .contact-fields a { color: var(--ink); text-decoration: underline; }
+.contact-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.recipient-details .checks-sheet > header { gap: 12px; }
+.recipient-details h2 { min-width: 0; overflow-wrap: anywhere; }
+.contact-editor.add-form { margin: 0; gap: 16px; }
+.contact-target { margin: 0; font-size: 14px; color: var(--ink-2); }
+.contact-target a { color: inherit; text-decoration: underline; }
+.contact-notice { margin: 0 0 14px; }
+.edit-cap { display: block; margin-left: auto; }
+.recipient-details button { min-height: 36px; }
 .history-totals { display: grid; grid-template-columns: 1fr 1fr; border-block: 1px solid var(--line); padding: 12px 0; gap: 12px; font-size: 14px; }
 .history-totals > div + div { border-left: 1px solid var(--line); padding-left: 14px; }
 .checks-content .history-totals h3 { margin: 0 0 4px; font-size: 13px; font-weight: 500; }
@@ -880,7 +889,7 @@ summary { cursor: pointer; }
   .payment-receipt { max-width: 11em; }
   .checks-dialog { inset: auto 0 0; margin: 0 auto; width: min(100%, 520px); border-radius: 16px 16px 0 0; }
   .checks-content { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
-  .directory-footer button { min-height: 44px; }
+  .directory-footer button, .recipient-details button, .contact-editor input { min-height: 44px; }
   .remove-confirm { width: 100%; }
 
   .log { gap: 14px; padding: 12px var(--panel-pad); }

@@ -49,6 +49,7 @@ The browser reaches the agent through the routes in [`lib/agent-proxy.ts`](lib/a
 | `GET /api/directory` | `GET /directory?owner=` |
 | `POST /api/directory` | `POST /directory` |
 | `POST /api/chat` | `POST /chat` |
+| `POST /api/directory/rename` | `POST /directory/rename` with the session owner, address, expected name and new name |
 | `POST /api/directory/remove` | `POST /directory/remove` with the session owner and recipient address |
 | `POST /api/plans` | `POST /plans` |
 | `GET /api/plans/:id` | `GET /plans/:id` |
@@ -89,7 +90,8 @@ The **Recipients** tab searches the owner's directory by name and shows ten matc
 - The form rejects conflicting name/address pairs, reserved addresses and invalid caps before opening a wallet prompt. The chat leaves the cap blank when it cannot read the requested amount. [Recipient validation](lib/recipients.ts)
 - **Right after adding**, the owner can type "Pay Ramon 1": the agent reads the directory for each plan.
 - **Deletion:** select the trash icon beside a recipient and confirm. The owner’s wallet disables future payments, then the agent removes the directory entry. A retry checks the vault before requesting another signature. Previous receipts stay available.
-- Changing a cap requires a separate vault update. The recipient page shows local value only for the demo recipients; for a new recipient it shows the coin amounts.
+- Select **Edit name** in a recipient’s details to change the name recognized by the chat. The wallet address, receipts and payment preferences stay with the contact. Renaming requires the matching agent route on Railway.
+- Select **Edit cap** on an authorized recipient to change the combined USDT/USDC limit for the 30-day period. The owner confirms the change in their wallet. Payments already made still count, including when the new limit is lower than the amount already spent.
 
 ### The live attack
 

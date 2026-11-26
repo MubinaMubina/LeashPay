@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
-import { getAddress, type Address } from "viem";
+import { getAddress, isAddressEqual, parseEventLogs, type Address, type TransactionReceipt } from "viem";
 import { leashVaultAbi } from "./abi.generated";
 import { errorText, publicClient, useApi, useOwnerWallet } from "./client";
 import type { DirectoryEntry, ListedRecipient } from "./recipients";
@@ -35,14 +35,35 @@ export async function refreshRecipientList(
   }
 }
 
-export async function readRecipientAuthorization(vault: Address, recipient: Address): Promise<ListedRecipient["onChain"]> {
+export async function readRecipientAuthorization(vault: Address, recipient: Address, blockNumber?: bigint): Promise<ListedRecipient["onChain"]> {
   try {
     const [allowed, monthlyCap, spentThisMonth] = await publicClient.readContract({
-      address: vault, abi: leashVaultAbi, functionName: "recipientInfo", args: [recipient],
+      address: vault, abi: leashVaultAbi, functionName: "recipientInfo", args: [recipient], blockNumber,
     });
     return { allowed, monthlyCap, spentThisMonth };
   } catch {
     return null;
+  }
+}
+
+/** Only the owner can change this rule. Pin the owner's nonce to the same block as
+ * the allowance read, so a later confirmed revocation makes this transaction stale. */
+export async function readCapForEdit(vault: Address, recipient: Address, owner: Address) {
+  const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
+  const [authorization, nonce, pending] = await Promise.all([
+    readRecipientAuthorization(vault, recipient, blockNumber),
+    publicClient.getTransactionCount({ address: owner, blockNumber }),
+    publicClient.getTransactionCount({ address: owner, blockTag: "pending" }),
+  ]);
+  if (pending !== nonce) throw new Error("Your wallet has another transaction in progress. Wait for it to confirm and try again.");
+  return { authorization, nonce };
+}
+
+export function verifyCapReceipt(receipt: Pick<TransactionReceipt, "logs">, vault: Address, recipient: Address, cap: bigint) {
+  const updates = parseEventLogs({ abi: leashVaultAbi, eventName: "RecipientUpdated", logs: receipt.logs });
+  if (!updates.some(log => isAddressEqual(log.address, vault) && isAddressEqual(log.args.recipient, recipient) &&
+    log.args.allowed && log.args.monthlyCap === cap)) {
+    throw new Error("The transaction receipt didn’t confirm this cap. Reopen the recipient to check the current limit.");
   }
 }
 

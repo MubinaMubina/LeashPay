@@ -1,8 +1,8 @@
 import { getAddress, parseUnits, zeroAddress } from "viem";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEMO_ATTACK_ADDRESS, DEMO_RECIPIENTS } from "@/lib/demo";
 import {
-  checkNewRecipient, reviewRecipient, saveReviewedRecipient, type ListedRecipient, type NewRecipient, type RecipientForm, type Reserved,
+  changeRecipientCap, checkNewRecipient, reviewRecipient, saveReviewedRecipient, type ListedRecipient, type NewRecipient, type RecipientForm, type Reserved,
 } from "@/lib/recipients";
 
 const RESERVED: Reserved = {
@@ -222,5 +222,30 @@ describe("checkNewRecipient", () => {
 
   it("skips the agent check for a vault that has no agent", () => {
     expect(checkNewRecipient(form({ address: RESERVED.agent! }), [], { ...RESERVED, agent: null }).ok).toBe(true);
+  });
+});
+
+describe("editing an authorized recipient’s cap", () => {
+  const current = { allowed: true, monthlyCap: parseUnits("1000", 18), spentThisMonth: parseUnits("300", 18) };
+  const next = parseUnits("250.000000000000000001", 18);
+  const snapshot = (authorization: ListedRecipient["onChain"] = current) => async () => ({ authorization, nonce: 7 });
+
+  it("can lower the cap below existing spending and sends the exact decimal amount with the reviewed nonce", async () => {
+    const confirm = vi.fn(async () => {});
+    const result = await changeRecipientCap(current.monthlyCap, "250.000000000000000001", snapshot(), confirm);
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(next, 7);
+    expect(result).toEqual({ ...current, monthlyCap: next });
+    await changeRecipientCap(current.monthlyCap, "250.000000000000000001", snapshot(result), confirm);
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("only opens a wallet for a valid change to the reviewed allowance", async () => {
+    const confirm = vi.fn();
+    await expect(changeRecipientCap(current.monthlyCap, "0", snapshot(), confirm)).rejects.toThrow(/more than 0/);
+    await expect(changeRecipientCap(current.monthlyCap, "1e2", snapshot(), confirm)).rejects.toThrow(/as a number/);
+    await expect(changeRecipientCap(current.monthlyCap, "20", snapshot(null), confirm)).rejects.toThrow(/read the current/);
+    await expect(changeRecipientCap(current.monthlyCap, "20", snapshot({ ...current, allowed: false }), confirm)).rejects.toThrow(/no longer authorized/);
+    await expect(changeRecipientCap(1n, "20", snapshot(), confirm)).rejects.toThrow(/cap changed/);
+    expect(confirm).not.toHaveBeenCalled();
   });
 });

@@ -444,6 +444,36 @@ describe("the recipient directory", () => {
     expect(result).toContainEqual({ name: "Marco", address: MARCO, country: "TH", currency: "THB", preferredToken: "USDC" });
   });
 
+  it("renames one contact in place, preserves metadata, and exposes the new name to the planner", async () => {
+    const api = app();
+    const contact = { name: "Marco", address: MARCO, country: "PH", currency: "PHP", preferredToken: "USDC" };
+    await api.request("/directory", json({ ...contact, owner: OWNER }));
+    await api.request("/directory", json({ ...contact, owner: ATTACKER }));
+    const rename = (name: string, expectedName: string) =>
+      api.request("/directory/rename", json({ owner: OWNER, address: MARCO.toLowerCase(), name, expectedName }));
+    const saved = await rename("  Marco Reyes  ", "Marco");
+    expect(saved.status).toBe(200);
+    const entries = await saved.json();
+    expect(entries).toEqual([{ name: "Linh", address: LINH }, { ...contact, name: "Marco Reyes" }]);
+    expect(await (await rename("Marco Reyes", "Marco")).json()).toEqual(entries);
+    expect((await rename("LINH", "Marco Reyes")).status).toBe(409);
+    expect((await rename("Marc", "Marco")).status).toBe(409);
+    expect((await rename("M\u200barco", "Marco Reyes")).status).toBe(400);
+    expect(await (await api.request(`/directory?owner=${ATTACKER}`)).json()).toEqual([contact]);
+    await createPlan(api, "Pay Marco Reyes 1");
+    expect(planner.mock.calls.at(-1)?.[0].directory).toContainEqual({ ...contact, name: "Marco Reyes" });
+  });
+
+  it("accepts only one competing rename and never recreates a deleted address on retry", async () => {
+    const api = app();
+    const rename = (name: string) => api.request("/directory/rename", json({ owner: OWNER, address: LINH, expectedName: "Linh", name }));
+    const raced = await Promise.all([rename("Lynn"), rename("Lin")]);
+    expect(raced.map(response => response.status).sort()).toEqual([200, 409]);
+    expect((await api.request("/directory/remove", json({ owner: OWNER, address: LINH }))).status).toBe(200);
+    expect((await rename("Lin")).status).toBe(409);
+    expect(await (await api.request(`/directory?owner=${OWNER}`)).json()).toEqual([]);
+  });
+
   it("makes create-only saves idempotent and keeps a competing save from renaming an address", async () => {
     const api = app();
     const save = (name: string) => api.request("/directory", json({ owner: OWNER, address: MARCO, name, createOnly: true }));

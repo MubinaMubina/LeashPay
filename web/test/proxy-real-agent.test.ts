@@ -81,6 +81,14 @@ describe("proxy against the real agent app", () => {
     expect(await listed.json()).toEqual([{ name: "Linh", address: LINH }]);
   });
 
+  it("renames an existing contact through the session-scoped route", async () => {
+    const contact = { address: "0x3333333333333333333333333333333333333333", name: "Sam", currency: "THB" };
+    await call(proxy(TOKEN), "POST", "directory", contact);
+    const result = await call(proxy(TOKEN), "POST", "directory/rename", { address: contact.address, expectedName: "Sam", name: "Sam Lee" });
+    expect(result.status).toBe(200);
+    expect(await result.json()).toContainEqual({ ...contact, name: "Sam Lee" });
+  });
+
   it("is refused by the agent when the token is missing, so the token rule is real", async () => {
     expect((await call(proxy(undefined), "GET", "directory")).status).toBe(401);
   });
