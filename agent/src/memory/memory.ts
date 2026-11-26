@@ -1,5 +1,5 @@
 import { formatUnits, type Address } from "viem";
-import type { AttackResult, PaymentResult } from "../execution/executor";
+import { ALREADY_PAID_NOTE, type AttackResult, type PaymentResult } from "../execution/executor";
 import type { Plan } from "../plan/build";
 import type { RecipientEntry } from "../plan/directory";
 import { oneLine } from "../validation";
@@ -18,6 +18,26 @@ const MAX_PAGES = 4;
 const MAX_NOTE_CHARS = 600;
 /** After a failed search, plans skip memory at once for this long. */
 const FAILURE_MS = 30 * 1000;
+/** After a failed save, later saves are skipped for this long instead of piling up behind the outage. */
+const SAVE_BACKOFF_MS = 60 * 1000;
+/** Most saves waiting at once; past it, a new note is dropped (and logged) rather than queued. */
+const MAX_PENDING = 50;
+
+/**
+ * Every note starts with its owner's tag. One Living Brain subject holds every owner's notes (the
+ * API key can act for one subject only), so recall keeps a page only when it carries this owner's
+ * tag and no other owner's. A recipient's address is never written in tag form, and text the owner
+ * typed is cleaned of the tag, so one owner's notes can't be recalled by another.
+ */
+const TAG = "leashpay-owner:";
+export const ownerTag = (owner: Address) => `[${TAG}${owner.toLowerCase()}]`;
+const clean = (text: string, max: number) => oneLine(text, max).replaceAll(new RegExp(TAG, "gi"), "");
+
+/** True when the page holds this owner's notes and nobody else's. */
+export function isOwnersPage(text: string, owner: Address): boolean {
+  const tags = new Set([...text.toLowerCase().matchAll(/leashpay-owner:(0x[0-9a-f]{40})/g)].map((m) => m[1]));
+  return tags.size === 1 && tags.has(owner.toLowerCase());
+}
 
 export interface MemoryNote {
   title: string;
@@ -41,6 +61,8 @@ export function createMemory(options: { client: BrainClient; now?: () => number;
   let failed: { until: number; reason: string } | null = null;
   let writeError: string | undefined;
   let queue: Promise<void> = Promise.resolve();
+  let pending = 0;
+  let backoffUntil = 0;
   const reasonOf = (err: unknown, fallback: string) => (err instanceof BrainError ? err.message : fallback);
 
   return {
@@ -51,10 +73,9 @@ export function createMemory(options: { client: BrainClient; now?: () => number;
         const hits = await client.search(query.slice(0, 500), TOP_K);
         const slugs = [...new Set(hits.map((h) => h.slug))].slice(0, MAX_PAGES);
         const pages = await Promise.all(slugs.map((s) => client.page(s).catch(() => null)));
-        const mine = owner.toLowerCase();
-        // One subject holds every owner's notes, and every note names its owner: keep this owner's only.
+        if (slugs.length > 0 && pages.every((p) => p === null)) throw new BrainError("Living Brain found pages but none of them could be read.");
         const notes = pages
-          .filter((p): p is NonNullable<typeof p> => p !== null && p.text.toLowerCase().includes(mine))
+          .filter((p): p is NonNullable<typeof p> => p !== null && isOwnersPage(p.text, owner))
           .map((p) => ({ title: oneLine(p.title, 120), text: p.text.slice(0, MAX_NOTE_CHARS) }));
         return withWrite({ available: true as const, notes });
       } catch (err) {
@@ -64,13 +85,25 @@ export function createMemory(options: { client: BrainClient; now?: () => number;
       }
     },
     remember(note) {
+      if (pending >= MAX_PENDING) {
+        log(`memory: not saved (${note.originRef}): ${MAX_PENDING} saves already waiting`);
+        return queue;
+      }
+      pending++;
       queue = queue.then(async () => {
         try {
+          if (backoffUntil > now()) {
+            log(`memory: not saved (${note.originRef}): ${writeError ?? "saves paused"} (retrying saves after a pause)`);
+            return;
+          }
           await client.capture(note);
           writeError = undefined;
         } catch (err) {
           writeError = reasonOf(err, "Living Brain couldn't be reached.");
+          backoffUntil = now() + SAVE_BACKOFF_MS;
           log(`memory: not saved (${note.originRef}): ${writeError}`);
+        } finally {
+          pending--;
         }
       });
       return queue;
@@ -84,22 +117,23 @@ const amountOf = (amount: string | null, token: string) => (amount === null ? "a
 /** What a run of the plan teaches the agent: each payout and each vault refusal. */
 export function notesForRun(plan: Plan, results: PaymentResult[], at: Date): BrainNote[] {
   return results.flatMap((r): BrainNote[] => {
-    const who = `${oneLine(r.recipientName, 60)} (${r.recipient ?? "no address"})`;
-    if (r.status === "paid" && r.hash) {
+    const who = `${clean(r.recipientName, 60)} (${r.recipient ?? "no address"})`;
+    // A row an earlier run paid was saved then; saving it again would date it today.
+    if (r.status === "paid" && r.hash && r.note !== ALREADY_PAID_NOTE) {
       return [
         {
-          label: `Payout to ${oneLine(r.recipientName, 60)}`,
-          content: `LeashPay payout on ${day(at.toISOString())} UTC. Owner ${plan.owner} paid ${who} ${amountOf(r.amount, r.token)} through vault ${plan.vault}. Transaction ${r.hash}. Plan ref ${plan.ref}.`,
+          label: `Payout to ${clean(r.recipientName, 60)}`,
+          content: `${ownerTag(plan.owner)} LeashPay payout on ${day(at.toISOString())} UTC. Owner ${plan.owner} paid ${who} ${amountOf(r.amount, r.token)} through vault ${plan.vault}. Transaction ${r.hash}. Plan ref ${plan.ref}.`,
           originRef: `leashpay:paid:${r.hash}`,
         },
       ];
     }
     if (r.status === "refused" && r.error) {
-      const why = typeof r.error === "string" ? oneLine(r.error, 200) : `${r.error.name}: ${oneLine(r.error.message, 200)}`;
+      const why = typeof r.error === "string" ? clean(r.error, 200) : `${r.error.name}: ${clean(r.error.message, 200)}`;
       return [
         {
-          label: `Vault refused a payment to ${oneLine(r.recipientName, 60)}`,
-          content: `LeashPay refusal on ${day(at.toISOString())} UTC. The vault of owner ${plan.owner} refused ${amountOf(r.amount, r.token)} to ${who}. Reason: ${why}.`,
+          label: `Vault refused a payment to ${clean(r.recipientName, 60)}`,
+          content: `${ownerTag(plan.owner)} LeashPay refusal on ${day(at.toISOString())} UTC. The vault of owner ${plan.owner} refused ${amountOf(r.amount, r.token)} to ${who}. Reason: ${why}.`,
           originRef: `leashpay:refused:${plan.id}:${r.index}`,
         },
       ];
@@ -114,7 +148,7 @@ export function notesForAttack(plan: Plan, results: AttackResult[], at: Date): B
     .filter((r) => r.status === "reverted")
     .map((r) => ({
       label: `Attack attempt to ${r.recipient}`,
-      content: `LeashPay attack attempt on ${day(at.toISOString())} UTC. A payment to ${r.recipient} was sent from owner ${plan.owner}'s vault ${plan.vault} without the owner's signature, playing a hacked agent. The vault refused it on-chain${r.reason ? ` with ${r.reason}` : ""}. Transaction ${r.hash}. Treat payments to ${r.recipient} as suspicious.`,
+      content: `${ownerTag(plan.owner)} LeashPay attack attempt on ${day(at.toISOString())} UTC. A payment to ${r.recipient} was sent from owner ${plan.owner}'s vault ${plan.vault} without the owner's signature, playing a hacked agent. The vault refused it on-chain${r.reason ? ` with ${r.reason}` : ""}. Transaction ${r.hash}. Treat payments to ${r.recipient} as suspicious.`,
       originRef: `leashpay:attack:${r.hash}`,
     }));
 }
@@ -122,13 +156,13 @@ export function notesForAttack(plan: Plan, results: AttackResult[], at: Date): B
 /** A recipient the owner saved, with the preferences that stay off-chain. */
 export function noteForRecipient(owner: Address, entry: RecipientEntry): BrainNote {
   const details = [
-    entry.country && `country ${oneLine(entry.country, 60)}`,
+    entry.country && `country ${clean(entry.country, 60)}`,
     entry.currency && `local currency ${entry.currency}`,
     entry.preferredToken && `prefers to be paid in ${entry.preferredToken}`,
   ].filter(Boolean);
   return {
-    label: `Recipient ${oneLine(entry.name, 60)}`,
-    content: `LeashPay recipient. Owner ${owner} saved ${oneLine(entry.name, 60)} (${entry.address})${details.length ? `: ${details.join(", ")}` : ""}.`,
+    label: `Recipient ${clean(entry.name, 60)}`,
+    content: `${ownerTag(owner)} LeashPay recipient. Owner ${owner} saved ${clean(entry.name, 60)} (${entry.address})${details.length ? `: ${details.join(", ")}` : ""}.`,
     originRef: `leashpay:recipient:${owner.toLowerCase()}:${entry.address.toLowerCase()}`,
   };
 }

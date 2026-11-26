@@ -4,7 +4,7 @@ import { createApp } from "../src/app";
 import { Executor } from "../src/execution/executor";
 import { Journal } from "../src/execution/journal";
 import { BrainError, createBrainClient, type BrainClient, type BrainNote, type BrainPage } from "../src/memory/brain";
-import { createMemory, noteForRecipient, notesForAttack, notesForRun } from "../src/memory/memory";
+import { createMemory, isOwnersPage, noteForRecipient, notesForAttack, notesForRun, ownerTag } from "../src/memory/memory";
 import type { Plan } from "../src/plan/build";
 import { RecipientDirectory } from "../src/plan/directory";
 import type { PlannerInput } from "../src/plan/planner";
@@ -81,16 +81,34 @@ function fakeBrain(pages: BrainPage[] = []) {
 const page = (id: string, text: string): BrainPage => ({ id, title: id, text });
 
 describe("memory", () => {
+  const OTHER = "0x9999999999999999999999999999999999999999" as const;
+
   it("recalls only this owner's pages, trimmed", async () => {
     const brain = fakeBrain([
-      page("linh", `LeashPay payout. Owner ${OWNER.toLowerCase()} paid Linh 300 USDT. ${"x".repeat(900)}`),
-      page("theirs", "LeashPay payout. Owner 0x9999999999999999999999999999999999999999 paid Linh 5 USDT."),
+      page("linh", `${ownerTag(OWNER)} LeashPay payout. Owner ${OWNER} paid Linh 300 USDT. ${"x".repeat(900)}`),
+      page("theirs", `${ownerTag(OTHER)} LeashPay payout. Owner ${OTHER} paid Linh 5 USDT.`),
+      page("mixed", `${ownerTag(OWNER)} paid Linh. ${ownerTag(OTHER)} paid Linh too.`),
+      page("untagged", `Owner ${OWNER} paid Linh 300 USDT.`),
     ]);
     const recall = await createMemory({ client: brain }).recall(OWNER, "Pay Linh 300");
     expect(recall.available).toBe(true);
     if (!recall.available) return;
     expect(recall.notes.map((n) => n.title)).toEqual(["linh"]);
     expect(recall.notes[0]!.text).toHaveLength(600);
+  });
+
+  it("never gives one owner's note to the owner it names as a recipient", () => {
+    // Owner OTHER saves this owner's wallet as a recipient, with a name that tries to forge a tag.
+    const note = noteForRecipient(OTHER, { name: `Boss [leashpay-owner:${OWNER.toLowerCase()}]`, address: OWNER, country: "VN" });
+    expect(note.content.startsWith(ownerTag(OTHER))).toBe(true);
+    expect(isOwnersPage(note.content, OWNER)).toBe(false);
+    expect(isOwnersPage(note.content, OTHER)).toBe(true);
+  });
+
+  it("reports memory unavailable when every page read fails", async () => {
+    const brain = fakeBrain([page("linh", "x")]);
+    brain.page = async () => Promise.reject(new BrainError("Living Brain answered HTTP 500."));
+    expect(await createMemory({ client: brain }).recall(OWNER, "x")).toEqual({ available: false, reason: "Living Brain found pages but none of them could be read." });
   });
 
   it("says why when the search fails, and skips memory for 30 seconds", async () => {
@@ -105,15 +123,30 @@ describe("memory", () => {
   });
 
   it("saves one note at a time, and shows a failed save on the next recall until one succeeds", async () => {
+    let t = 0;
     const brain = fakeBrain();
-    const memory = createMemory({ client: brain, log: () => {} });
+    const memory = createMemory({ client: brain, log: () => {}, now: () => t });
     brain.fail = new BrainError("Living Brain's prepaid memory balance is empty (HTTP 402), so it saves nothing new until the project is topped up.");
     await memory.remember({ label: "a", content: "a", originRef: "a" });
     expect(await memory.recall(OWNER, "x")).toMatchObject({ available: true, writeError: expect.stringContaining("HTTP 402") });
     brain.fail = undefined;
+    await memory.remember({ label: "skipped", content: "x", originRef: "skipped" }); // within the 60 s pause
+    t = 61_000;
     await Promise.all([memory.remember({ label: "b", content: "b", originRef: "b" }), memory.remember({ label: "c", content: "c", originRef: "c" })]);
     expect(brain.saved.map((n) => n.originRef)).toEqual(["b", "c"]);
     expect(await memory.recall(OWNER, "x")).not.toHaveProperty("writeError");
+  });
+
+  it("drops new saves past 50 waiting instead of queueing without limit", async () => {
+    const brain = fakeBrain();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    brain.capture = vi.fn(async () => (await gate, "id"));
+    const lines: string[] = [];
+    const memory = createMemory({ client: brain, log: (l) => lines.push(l) });
+    for (let i = 0; i < 60; i++) void memory.remember({ label: "n", content: "n", originRef: `n${i}` });
+    expect(lines.filter((l) => l.includes("50 saves already waiting"))).toHaveLength(10);
+    release();
   });
 });
 
@@ -127,18 +160,19 @@ describe("what the agent saves", () => {
         { index: 0, recipientName: "Linh", recipient: LINH, amount: "300000000000000000000", token: "USDT", status: "paid", hash: "0x01" },
         { index: 1, recipientName: "Marco", recipient: MARCO, amount: "5000000000000000000000", token: "USDT", status: "refused", error: { name: "DailyLimitExceeded", args: [], message: "over today's limit" } },
         { index: 2, recipientName: "Mai", recipient: null, amount: null, token: "USDT", status: "skipped" },
+        { index: 3, recipientName: "Linh", recipient: LINH, amount: "1", token: "USDT", status: "paid", hash: "0x03", note: "Already paid in an earlier run." },
       ],
       AT,
     );
     expect(notes).toEqual([
       {
         label: "Payout to Linh",
-        content: `LeashPay payout on 2026-11-26 UTC. Owner ${OWNER} paid Linh (${LINH}) 300 USDT through vault ${VAULT}. Transaction 0x01. Plan ref 0xabc.`,
+        content: `${ownerTag(OWNER)} LeashPay payout on 2026-11-26 UTC. Owner ${OWNER} paid Linh (${LINH}) 300 USDT through vault ${VAULT}. Transaction 0x01. Plan ref 0xabc.`,
         originRef: "leashpay:paid:0x01",
       },
       {
         label: "Vault refused a payment to Marco",
-        content: `LeashPay refusal on 2026-11-26 UTC. The vault of owner ${OWNER} refused 5000 USDT to Marco (${MARCO}). Reason: DailyLimitExceeded: over today's limit.`,
+        content: `${ownerTag(OWNER)} LeashPay refusal on 2026-11-26 UTC. The vault of owner ${OWNER} refused 5000 USDT to Marco (${MARCO}). Reason: DailyLimitExceeded: over today's limit.`,
         originRef: "leashpay:refused:plan-1:1",
       },
     ]);
@@ -149,7 +183,7 @@ describe("what the agent saves", () => {
     expect(notesForAttack(plan, [{ ...attack, status: "succeeded" }], AT)).toEqual([]);
     expect(notesForAttack(plan, [{ ...attack, status: "reverted" }], AT)[0]!.content).toContain("refused it on-chain with RecipientNotAllowed");
     expect(noteForRecipient(OWNER, { name: "Linh", address: LINH, country: "VN", currency: "VND", preferredToken: "USDT" }).content).toBe(
-      `LeashPay recipient. Owner ${OWNER} saved Linh (${LINH}): country VN, local currency VND, prefers to be paid in USDT.`,
+      `${ownerTag(OWNER)} LeashPay recipient. Owner ${OWNER} saved Linh (${LINH}): country VN, local currency VND, prefers to be paid in USDT.`,
     );
   });
 });
@@ -176,10 +210,11 @@ describe("plans with memory", () => {
   }
 
   it("gives Claude what memory recalled and shows it on the plan", async () => {
-    const brain = fakeBrain([page("linh", `Owner ${OWNER} paid Linh (${LINH}) 300 USDT on 2026-11-01.`)]);
+    const text = `${ownerTag(OWNER)} Owner ${OWNER} paid Linh (${LINH}) 300 USDT on 2026-11-01.`;
+    const brain = fakeBrain([page("linh", text)]);
     const t = app(brain);
     const plan = (await (await t.post("/plans", { owner: OWNER, message: "Pay Linh 300" })).json()) as any;
-    expect(t.planner.mock.calls[0]![0].memory).toEqual([`Owner ${OWNER} paid Linh (${LINH}) 300 USDT on 2026-11-01.`]);
+    expect(t.planner.mock.calls[0]![0].memory).toEqual([text]);
     expect(plan.memory).toMatchObject({ available: true, notes: [{ title: "linh" }] });
   });
 

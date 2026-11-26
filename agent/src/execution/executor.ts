@@ -6,6 +6,9 @@ import type { TokenSymbol } from "../plan/directory";
 import { isExecutable, type ExecutablePayment, type Plan } from "../plan/build";
 import type { Journal, JournalEvent } from "./journal";
 
+/** The note on a row an earlier run already paid: nothing new happened in this run. */
+export const ALREADY_PAID_NOTE = "Already paid in an earlier run.";
+
 export interface PaymentResult {
   index: number;
   recipientName: string;
@@ -232,7 +235,7 @@ export class Executor {
     const succeeded = history.find((e) => e.type === "step_succeeded");
     if (succeeded) {
       // Success is journaled only once the chain's finalized state shows it.
-      return { ...base, status: "paid", hash: succeeded.hash, note: "Already paid in an earlier run." };
+      return { ...base, status: "paid", hash: succeeded.hash, note: ALREADY_PAID_NOTE };
     }
 
     // 2. Every transaction sent earlier, newest first: while any of them could still land, never send another.

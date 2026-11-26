@@ -2,7 +2,7 @@
 
 The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 1st"*, into a payment plan. It shows the owner what the vault will say about each payment, and once the owner approves the plan with a wallet signature, it pays through the vault with its own key. The agent plans; the vault decides. Its key can only call the vault's agent functions, so even a tricked or hacked agent stays inside the owner's rules.
 
-**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (264 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). The [depeg guard](#depeg-guard-cournot) asks Cournot before each payment plan which stablecoin to pay in, and each payment shows its [local-currency amount](#local-currency-amounts-coinmarketcap) from CoinMarketCap. The agent's [memory](#memory-living-brain) (Living Brain) recalls past payouts, preferences and attack attempts before each plan; saving new memories waits on the project's Living Brain credits (HTTP 402 on 26 Nov).
+**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (267 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). The [depeg guard](#depeg-guard-cournot) asks Cournot before each payment plan which stablecoin to pay in, and each payment shows its [local-currency amount](#local-currency-amounts-coinmarketcap) from CoinMarketCap. The agent's [memory](#memory-living-brain) (Living Brain) recalls past payouts, preferences and attack attempts before each plan; saving new memories waits on the project's Living Brain credits (HTTP 402 on 26 Nov).
 
 ## How a payment flows
 
@@ -153,9 +153,9 @@ Each payment to a saved recipient with a local currency (the directory's `curren
 
 The agent's long-term memory is ChatAndBuild's Living Brain. It never decides anything and never blocks a payment.
 
-- **Recall, before each plan:** one search with the owner's message (top 8 hits), then up to 4 pages read, in parallel with the vault read. Only pages that name this owner's address are kept, since one Living Brain subject holds every owner's notes, and each is cut to 600 characters. Claude receives them inside `<agent_memory>` as escaped data, with the rule that memory may only add notes for the owner (a repeat payment, an address used in an attack before) and never adds, removes or changes recipients, addresses or amounts. The plan's `memory` field holds what was recalled; the card shows it.
-- **What is saved, after the fact:** each recipient the owner saves (country, local currency, preferred coin: the details that stay off-chain), each payout with its transaction, each payment the vault refused and why, and each demo attack the vault refused. Every note names its owner and has a stable `originRef` (`leashpay:paid:<tx>` and so on).
-- **Failures:** saving happens in the background, one note at a time, and never delays a response. A failed save is shown on the next plan ("Saving new memories is failing: …"). A failed search gives the plan `memory: { available: false, reason }` and skips memory for 30 seconds. Each call has an 8-second deadline.
+- **Recall, before each plan:** one search with the owner's message (top 8 hits), then up to 4 pages read, in parallel with the vault read. Owners are kept apart by the agent: the API key can act for one Living Brain subject only, so every owner's notes share it. Each note starts with its owner's tag (`[leashpay-owner:0x…]`), a recipient's address is never written in that form, and the tag is stripped from text the owner typed. A page is recalled only when it carries this owner's tag and no other owner's; a page mixing owners, or one where Living Brain dropped the tag, is not recalled. Each is cut to 600 characters. If every page read fails, memory is reported unavailable. Claude receives them inside `<agent_memory>` as escaped data, with the rule that memory may only add notes for the owner (a repeat payment, an address used in an attack before) and never adds, removes or changes recipients, addresses or amounts. The plan's `memory` field holds what was recalled; the card shows it.
+- **What is saved, after the fact:** each recipient the owner saves (country, local currency, preferred coin: the details that stay off-chain), each payout with its transaction, each payment the vault refused and why, and each demo attack the vault refused. Every note names its owner and has a stable `originRef` (`leashpay:paid:<tx>` and so on). A row an earlier run already paid is not saved again, so it is never dated by the re-run.
+- **Failures:** saving happens in the background, one note at a time, and never delays a response. A failed save is shown on the next plan ("Saving new memories is failing: …"), and saves pause for 60 seconds instead of piling up; at most 50 wait at once, and past that a new note is dropped and logged. A failed search gives the plan `memory: { available: false, reason }` and skips memory for 30 seconds. Each call has an 8-second deadline.
 - **Today:** on 26 Nov, searches worked and every save was refused with HTTP 402 (prepaid memory balance empty). The agent says so on each plan until the project's balance is topped up; then saves start working with no code change.
 
 ## Known limits
@@ -167,7 +167,7 @@ The agent's long-term memory is ChatAndBuild's Living Brain. It never decides an
 - If the vault is paused when a payment is retried, the vault answers "paused" before it checks for duplicates, so a payment that already went through shows as refused until the vault is unpaused and the plan runs again. It is never paid twice.
 - A transaction stuck in the mempool stays "pending", and every later transaction from the agent's key queues behind it; there is no speed-up or cancel yet.
 - The recipient directory is a JSON file per agent server, keyed by owner; Living Brain keeps a copy of each recipient as memory but the directory stays the source of names and addresses.
-- Memory is kept apart per owner by filtering on the owner's address in the page text. If Living Brain compiled a page without the address, that note would not be recalled.
+- Memory is kept apart per owner by the owner tag in each note, checked by the agent, because the API key works for one Living Brain subject only. If Living Brain compiled a page without the tag, or mixed two owners in one page, that page is not recalled. A note dropped during an outage is not retried later.
 - The data-folder lock checks that the server holding it is still running. Two servers started in the same instant after a crash could both take it, and a reused process number can block a start (delete `server.lock` when no server is running).
 
 ## Code map
@@ -202,7 +202,7 @@ The agent's long-term memory is ChatAndBuild's Living Brain. It never decides an
 ## Tests
 
 ```bash
-npm test          # 264 tests; no API key, chain or network needed
+npm test          # 267 tests; no API key, chain or network needed
 npm run build     # type-check
 npm run abi:check # the generated ABI matches the Solidity interfaces
 npm run check:demo # the two demo messages give the plans the demo needs, 3 runs each against the real Claude (about 6 calls; needs the Claude key)
