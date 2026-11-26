@@ -46,7 +46,7 @@ export async function readRecipientAuthorization(vault: Address, recipient: Addr
   }
 }
 
-export function useRecipientBook(vault: Address): RecipientBook {
+export function useRecipientBook(vault: Address | null): RecipientBook {
   const api = useApi();
   const owner = useOwnerWallet()?.address;
   // Responses from an earlier owner, vault, or overlapping refresh cannot replace the current list.
@@ -54,7 +54,7 @@ export function useRecipientBook(vault: Address): RecipientBook {
   const [data, setData] = useState<BookData & { scope: typeof scope } | null>(null);
   const [revision, setRevision] = useState(0);
   const readDirectory = useCallback(async () => {
-    if (!scope.active || !scope.owner) throw new Error("Your wallet isn't ready yet.");
+    if (!scope.active || !scope.owner || !scope.vault) throw new Error("Your wallet isn't ready yet.");
     const directory = await api<DirectoryEntry[]>(`directory?owner=${scope.owner}`);
     if (!scope.active) throw new Error("Your wallet session changed.");
     if (!directory.ok) throw new Error(directory.body.error ?? `The agent answered ${directory.status}.`);
@@ -62,12 +62,14 @@ export function useRecipientBook(vault: Address): RecipientBook {
     return directory.body;
   }, [api, scope]);
   const refresh = useCallback(() => {
+    const currentVault = scope.vault;
+    if (!currentVault) return Promise.resolve(null);
     scope.previewRequested = true;
     return refreshRecipientList(scope, async () => {
       const directory = await readDirectory();
       return Promise.all(directory.map(async (entry) => {
         const address = getAddress(entry.address);
-        return { ...entry, address, onChain: await readRecipientAuthorization(scope.vault, address) };
+        return { ...entry, address, onChain: await readRecipientAuthorization(currentVault, address) };
       }));
     }, (state) => setData({ ...state, scope }));
   }, [readDirectory, scope]);

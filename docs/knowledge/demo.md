@@ -10,7 +10,7 @@
 
 ## Demo wallets on BSC testnet
 
-New accounts start with an empty recipient list. For the walkthrough below, open **Recipients → Add recipient** and add Marco before rehearsal. To show the three-person payroll, add all three.
+New accounts open with zero tBNB and an empty recipient list. Even before login, open **Your vault** and switch between **Add money** and **Withdraw** to preview the direction of a bank transfer. For a live payment, sign in with a prepared, funded test vault. Before rehearsal, open **Recipients → Add recipient** and add Marco if needed. To show the three-person payroll, add all three.
 
 | Recipient | Public wallet address | Country | Local currency |
 | --- | --- | --- | --- |

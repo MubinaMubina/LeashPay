@@ -1,6 +1,6 @@
 # LeashPay web app
 
-The owner's dashboard and the recipient's phone page. The owner logs in with email, Privy creates their wallet, and that wallet owns a LeashPay vault on BSC testnet. The owner tells the agent who to pay; every payment shows the vault's verdict before anything is signed; one wallet signature runs the plan; and each payment turns "Paid" with its BscScan link as it lands.
+The owner's dashboard and the recipient's phone page. The owner logs in with email, Privy creates their wallet, and they can open their account with zero tBNB. The owner can later activate a payment vault on BSC testnet. The owner tells the agent who to pay; every payment shows the vault's verdict before anything is signed; one wallet signature runs the plan; and each payment turns "Paid" with its BscScan link as it lands.
 
 **Status:** built and used on BSC testnet on 26 Nov:
 - the owner's first payment from the browser, Linh, Marco and Mai at 1 USDT each;
@@ -25,7 +25,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
    npm run dev
    ```
 4. Open http://localhost:3000 and log in with your email.
-5. Select **Set up my vault**. On BSC testnet, a fresh account confirms three transactions: create the vault, fund it with test USDT, and fund it with test USDC. The owner's wallet needs a little tBNB for gas. Add your first contact from **Recipients → Add recipient**.
+5. Visitors and signed-in owners share **Payment chat**, **Recipients**, and **Your vault**. In **Your vault**, try a bank deposit or withdrawal preview. For on-chain payments, choose **Activate vault** and confirm vault creation with a wallet that has testnet gas. A new vault starts empty. Add a contact from **Recipients → Add recipient**.
 
 `web/next.config.ts` copies only the settings the web app needs from the root `.env`. The agent's key and the Claude key never enter this process, and only `NEXT_PUBLIC_*` values reach the browser.
 
@@ -71,9 +71,13 @@ Type a request in English or French, or choose an action on the help card. “Ho
 
 ### Vault setup
 
-Setup creates the owner's vault and tops up each test stablecoin that falls below 2,000. After an interruption, **Finish setup** reads the current balances and resumes the remaining steps. [Setup logic](lib/onboarding.ts)
+Opening an account only looks up the wallet’s existing vault. A new account can open with zero tBNB, zero stablecoins and no recipients. Existing vaults open the payment dashboard at any balance. A failed lookup offers a retry and leaves balances marked unavailable. [Account logic](lib/onboarding.ts)
 
-New accounts start with an empty recipient list. Returning owners keep their contacts and spending caps. For a rehearsal, add the people you need from the [demo wallet list](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet).
+**Activate vault** is optional. The owner confirms one transaction to create a vault and pays its testnet network fee in tBNB. The app never mints test funds or adds contacts during signup or activation. For a rehearsal, use a funded test vault and the [demo wallet list](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet).
+
+In **Your vault**, **Add money** and **Withdraw** preview a bank transfer in either direction. Enter the USD amount to deposit or receive. The preview divides it by the selected coin’s USD market price to show the estimated USDT or USDC before fees. CoinMarketCap supplies the rate and quote time. If the rate is unavailable, the preview labels the $1 example explicitly. The amount stays in the browser. Both previews are available before login and after activation. The final buttons are disabled.
+
+A visitor can type in the chat and explore the recipient directory. Sending a message or trying to add a contact shows a login prompt. A signed-in owner without a vault sees an activation prompt instead. Requests made while browsing never run automatically after login or activation.
 
 ### Adding a recipient
 

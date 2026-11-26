@@ -33,8 +33,9 @@ function rememberPlan(id: string) {
 }
 
 interface ChatProps {
-  owner: Address;
-  vault: Address;
+  owner: Address | null;
+  vault: Address | null;
+  accessNotice: ReactNode;
   agent: Address | null | undefined;
   book: RecipientBook;
   onViewAll: () => void;
@@ -43,7 +44,7 @@ interface ChatProps {
   depegThreshold: number;
 }
 
-export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentDown, depegThreshold }: ChatProps) {
+export function Chat({ owner, vault, accessNotice, agent, book, onViewAll, onSettled, onAgentDown, depegThreshold }: ChatProps) {
   const api = useApi();
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [restored, setRestored] = useState<{ plan: PlanJson; events: JournalEventJson[] } | null>(null);
@@ -70,6 +71,7 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
   }, [entries, thinking]);
 
   useEffect(() => {
+    if (!owner || !vault) return;
     if (initialPlan.current === undefined) initialPlan.current = new URLSearchParams(window.location.search).get("plan");
     const id = initialPlan.current;
     if (!id) return;
@@ -93,17 +95,17 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
       }).catch(() => { if (!ignore) setRestoreFailed(true); })
       .finally(() => { if (!ignore) setRestoring(false); });
     return () => { ignore = true; };
-  }, [api, owner, restoreAttempt]);
+  }, [api, owner, vault, restoreAttempt]);
 
   const send = useCallback(async (message: string) => {
     const trimmed = message.trim();
     if (!trimmed || sending.current) return;
+    setText("");
     sending.current = true;
     setThinking(true);
-    setText("");
     setEntries((list) => [...list, { kind: "owner", text: trimmed }]);
     try {
-      const turn = await requestChatTurn(api, owner, trimmed, pending.current, depegThreshold, () => active.current);
+      const turn = await requestChatTurn(api, vault ? owner : null, trimmed, pending.current, depegThreshold, () => active.current);
       if (!turn || !active.current) return;
       pending.current = turn.context;
       if (turn.entry.kind === "plan") rememberPlan(turn.entry.plan.id);
@@ -115,10 +117,14 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
       sending.current = false;
       if (active.current) setThinking(false);
     }
-  }, [api, owner, depegThreshold, onAgentDown]);
+  }, [api, owner, vault, depegThreshold, onAgentDown]);
 
   function openAction(action: "balance" | "recipients" | "add" | "payment") {
     if (sending.current) return;
+    if (!vault || !owner) {
+      setEntries(list => [...list, { kind: "access" }]);
+      return;
+    }
     pending.current = [];
     let entry: ChatEntry;
     if (action === "payment") {
@@ -135,6 +141,7 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
 
   function renderReply(entry: Exclude<ChatEntry, { kind: "owner" }>, index: number) {
     switch (entry.kind) {
+      case "access": return accessNotice ?? <ChatCard title="Your vault is ready. Send your request when you’re ready.">{null}</ChatCard>;
       case "plan": return <PlanCard plan={entry.plan} initialEvents={entry.events} onSettled={onSettled} onAgentDown={onAgentDown} />;
       case "help": return <HelpCard onAction={openAction} />;
       case "balance": return <BalanceCard />;
@@ -143,6 +150,7 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
       case "notice": return <ChatCard title={entry.title}>{null}</ChatCard>;
       case "error": return <div className="card error-card" role="alert">{entry.text}</div>;
       case "add": {
+        if (!vault) return accessNotice;
         const finish = (title: string) => setEntries((list) =>
           list.map((item, i) => i === index ? { kind: "notice", title } : item));
         return (
@@ -165,8 +173,8 @@ export function Chat({ owner, vault, agent, book, onViewAll, onSettled, onAgentD
             <h2>Who do you want to pay?</h2>
             <p className="hint">Tell me who and how much. You’ll review the plan before signing.</p>
             <div className="chat-starters">
-              <button className="chip" onClick={() => { setText("Pay Linh 1 USDT"); composer.current?.focus(); }}>Try “Pay Linh 1 USDT”</button>
-              <button className="chip" onClick={() => setEntries([{ kind: "help" }])}>What can you do?</button>
+              <button className="chip" onClick={() => void send("What is my balance?")}>Check my balance</button>
+              <button className="chip" onClick={() => setEntries([{ kind: vault && owner ? "help" : "access" }])}>What can you do?</button>
             </div>
           </div>
         )}
