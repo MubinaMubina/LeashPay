@@ -55,7 +55,7 @@ export function chunks(from: bigint, to: bigint, size = CHUNK_BLOCKS): [bigint, 
 }
 
 /** Runs the tasks at most `limit` at a time, keeping their order. */
-async function limited<T>(tasks: (() => Promise<T>)[], limit = CONCURRENCY): Promise<T[]> {
+export async function limited<T>(tasks: (() => Promise<T>)[], limit = CONCURRENCY): Promise<T[]> {
   const results = new Array<T>(tasks.length);
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {

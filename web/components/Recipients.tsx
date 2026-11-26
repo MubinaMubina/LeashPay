@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { encodeFunctionData, type Address } from "viem";
 import { leashVaultAbi } from "@/lib/abi.generated";
 import { errorText, useApi, useOwnerWallet, useSendAndWait } from "@/lib/client";
-import { formatAmount } from "@/lib/plan-progress";
+import { formatTokenAmount } from "@/lib/plan-progress";
+import { RecipientDetails } from "./RecipientDetails";
 import { AddRecipientForm } from "./RecipientForm";
 import { readRecipientAuthorization, withVaultLock, type RecipientBook } from "@/lib/recipient-book";
 import type { DirectoryEntry, ListedRecipient } from "@/lib/recipients";
@@ -27,6 +28,9 @@ export function Recipients({ vault, agent, book, listRequest, accessNotice }: { 
   const [adding, setAdding] = useState(false);
   const previousRequest = useRef(listRequest);
   const [phase, setPhase] = useState<Phase>({ kind: "closed" });
+  const [selected, setSelected] = useState<DirectoryEntry | null>(null);
+  const contact = selected && (list?.find(entry => entry.address === selected.address) ?? selected);
+  const [walletPending, setWalletPending] = useState(false);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [checks, setChecks] = useState(new Map<Address, ListedRecipient["onChain"]>());
@@ -132,8 +136,27 @@ export function Recipients({ vault, agent, book, listRequest, accessNotice }: { 
 
   const busy = adding || (phase.kind === "remove" && phase.stage !== "review");
 
+  const details = contact && vault && <RecipientDetails key={contact.address} contact={contact} book={book} vault={vault}
+    onDirectory={entries => {
+      setList(entries);
+      setSelected(entries.find(entry => entry.address === contact.address) ?? null);
+      setLoadError(null);
+    }} onWalletPending={setWalletPending} onClose={() => {
+      setSelected(null);
+      setWalletPending(false);
+      requestAnimationFrame(() => {
+        const target = document.getElementById(`details-${contact.address}`) ?? document.getElementById("recipient-search");
+        if (target && !target.closest("[hidden]")) target.focus();
+      });
+    }} />;
+
+  if (walletPending) return <>{details}<div className="directory-head" role="status">
+    Waiting for wallet confirmation and the transaction receipt…
+  </div></>;
+
   return (
     <>
+      {details}
       <header className="directory-head">
         {!showList && <button type="button" autoFocus={phase.kind === "remove"} className="back-to-recipients" disabled={busy}
           aria-label="Back to recipients" title="Back to recipients" onClick={backToList}>←</button>}
@@ -164,13 +187,16 @@ export function Recipients({ vault, agent, book, listRequest, accessNotice }: { 
                 const check = checks.get(r.address);
                 return (
                   <li key={r.address} className="person">
-                    <div className="person-identity"><strong>{r.name}</strong>
+                    <button type="button" className="person-details" id={`details-${r.address}`} aria-haspopup="dialog" aria-label={`View details for ${r.name}`}
+                      onClick={() => setSelected(r)}>
+                    <span className="person-identity"><strong>{r.name}</strong>
                       <small>{[r.country, r.currency].filter(Boolean).join(" · ")}</small>
-                    </div>
-                    <div className="person-cap">{check === undefined ? <span className="cap-loading"><span className="sr-only">Checking limit…</span></span> :
+                    </span>
+                    <span className="person-cap">{check === undefined ? <span className="cap-loading"><span className="sr-only">Checking limit…</span></span> :
                       check === null ? "Limit unavailable" : check.allowed ?
-                      <>{formatAmount(check.monthlyCap.toString(), "").trim()} <small>/ 30 days</small></> :
-                      <span className="not-allowed">Not in vault</span>}</div>
+                      <>{formatTokenAmount(check.monthlyCap.toString())} <small>/ 30 days</small></> :
+                      <span className="not-allowed">Not in vault</span>}</span>
+                    </button>
                     <button type="button" className="remove-recipient" id={`delete-${r.address}`}
                       aria-label={`Delete ${r.name}`} title={`Delete ${r.name}`} onClick={() => {
                         returnFocus.current = `delete-${r.address}`;

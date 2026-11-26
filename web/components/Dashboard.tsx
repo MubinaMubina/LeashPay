@@ -12,6 +12,7 @@ import { Chat } from "./Chat";
 import { AccessNotice, type AccessPrompt } from "./AccessNotice";
 import { MoneyActions } from "./MoneyActions";
 import { useRecipientBook } from "@/lib/recipient-book";
+import { PaymentHistory } from "./PaymentHistory";
 import { Recipients } from "./Recipients";
 
 interface VaultJson {
@@ -65,7 +66,7 @@ function useDepegThreshold(vault: Address | null): [number, (value: number) => v
 /** How long the vault column shows a reaction (balance changed, or "unchanged" after an attack). */
 const REACTION_MS = 4_000;
 
-const WORKSPACE_TABS = ["Payment chat", "Recipients", "Your vault"] as const;
+const WORKSPACE_TABS = ["Payment chat", "Recipients", "Your vault", "History"] as const;
 type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
 const PHONE_QUERY = "(max-width: 799px)";
@@ -287,6 +288,10 @@ export function Dashboard({ owner, vault, access }: { owner: Address | null; vau
           </details>}
           <MoneyActions active={tab === "Your vault"} />
           {access && <div ref={activation} tabIndex={-1}><AccessNotice prompt={access} /></div>}
+        </section>
+        <section id="panel-3" role="tabpanel" aria-labelledby="tab-3" className="workspace-panel history-panel" hidden={tab !== "History"}>
+          <header className="directory-head"><h1>History</h1></header>
+          {tab === "History" && (owner ? <PaymentHistory book={book} vault={vault} /> : accessNotice)}
         </section>
       </div>
       {!mobile && <aside className="vault-col" aria-label="Your vault">{vaultPanel}</aside>}

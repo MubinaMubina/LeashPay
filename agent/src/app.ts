@@ -108,6 +108,9 @@ const DirectoryBody = RecipientEntrySchema.extend({
   expectedDetails: RecipientEntrySchema.pick({ country: true, currency: true }).strict().optional(),
 });
 
+const RenameBody = DirectoryBody.pick({ owner: true, address: true, name: true })
+  .extend({ expectedName: RecipientEntrySchema.shape.name }).strict();
+
 /** The owner's signed approval, from GET /plans/:id/approval and the owner's wallet. */
 const ExecuteBody = z.object({
   expires: z.iso.datetime(),
@@ -216,6 +219,7 @@ export function createApp(deps: AppDeps) {
         if (!expectedDetails || current.country !== expectedDetails.country || current.currency !== expectedDetails.currency) {
           throw new DirectoryRuleError("Contact details changed. Review the current details before saving.");
         }
+        entry.name = current.name;
         entry.preferredToken = current.preferredToken;
       } else if (expectedDetails) {
         throw new DirectoryRuleError("This contact is no longer in your directory. Review it again.");
@@ -224,6 +228,20 @@ export function createApp(deps: AppDeps) {
     const saved = deps.directory.upsert(owner, entry);
     void deps.memory?.remember(noteForRecipient(owner, entry));
     return c.json(saved, 201);
+  });
+
+  app.post("/directory/rename", async (c) => {
+    const { owner, address, name, expectedName } = input(RenameBody, await readJson(c));
+    // No await between the comparison and the write. A stale tab cannot undo a removal or a newer rename.
+    const entries = deps.directory.list(owner);
+    const current = entries.find(entry => entry.address === address);
+    if (!current) throw new DirectoryRuleError("This recipient is no longer in your directory.");
+    if (current.name === name) return c.json(entries);
+    if (current.name !== expectedName) throw new DirectoryRuleError("The recipient’s name changed. Reopen the contact to edit the current name.");
+    const renamed = { ...current, name };
+    const saved = deps.directory.upsert(owner, renamed);
+    void deps.memory?.remember(noteForRecipient(owner, renamed));
+    return c.json(saved);
   });
 
   app.post("/directory/remove", async (c) => {

@@ -2,11 +2,7 @@ import { getAddress, isAddress, parseUnits, zeroAddress, type Address } from "vi
 import { DEMO_ATTACK_ADDRESS } from "./demo";
 import { FX_CURRENCIES } from "./fx";
 
-/**
- * Local currencies the owner can pick: the ones the app shows rates for, plus USD for
- * no conversion (the coins already track the dollar).
- */
-export const CURRENCIES = [...FX_CURRENCIES, "USD"] as const;
+export const CURRENCIES = FX_CURRENCIES;
 export type Currency = (typeof CURRENCIES)[number];
 
 /** Same limits as the agent's directory (agent/src/plan/directory.ts). */
@@ -51,14 +47,29 @@ export interface Reserved {
 
 export type Checked = { ok: true; recipient: NewRecipient } | { ok: false; error: string };
 
-const fail = (error: string): Checked => ({ ok: false, error });
+const fail = (error: string) => ({ ok: false as const, error });
+
+export function recipientNameError(name: string): string | null {
+  if (!name) return 'Give the recipient a name, so you can say "Pay Ramon 50".';
+  if (name.length > NAME_MAX) return `Keep the name under ${NAME_MAX} characters.`;
+  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(name)) return "Use a name without line breaks or invisible characters.";
+  return null;
+}
+
+function parseMonthlyCap(input: string) {
+  const raw = input.trim();
+  if (!/^\d+(\.\d{1,18})?$/.test(raw)) return fail("Write the monthly cap as a number, like 1000 or 250.5.");
+  const value = parseUnits(raw, 18);
+  if (value === 0n) return fail("The monthly cap must be more than 0, or the vault refuses every payment.");
+  if (value > CAP_MAX) return fail("That monthly cap is too large.");
+  return { ok: true as const, value };
+}
 
 /** Checks the form before any wallet popup, with a message the owner can act on. */
 export function checkNewRecipient(form: RecipientForm, existing: DirectoryEntry[], reserved: Reserved): Checked {
   const name = form.name.trim();
-  if (!name) return fail("Give the recipient a name, so you can say \"Pay Ramon 50\".");
-  if (name.length > NAME_MAX) return fail(`Keep the name under ${NAME_MAX} characters.`);
-  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(name)) return fail("Use a name without line breaks or invisible characters.");
+  const nameError = recipientNameError(name);
+  if (nameError) return fail(nameError);
 
   const rawAddress = form.address.trim();
   if (!isAddress(rawAddress, { strict: false })) return fail("That isn't a wallet address. It starts with 0x and has 40 more characters.");
@@ -83,16 +94,28 @@ export function checkNewRecipient(form: RecipientForm, existing: DirectoryEntry[
   const currency = CURRENCIES.find((c) => c === form.currency);
   if (!currency) return fail(`Pick a currency: ${CURRENCIES.join(", ")}.`);
 
-  const rawCap = form.monthlyCap.trim();
-  if (!/^\d+(\.\d{1,18})?$/.test(rawCap)) return fail("Write the monthly cap as a number, like 1000 or 250.5.");
-  const monthlyCap = parseUnits(rawCap, 18);
-  if (monthlyCap === 0n) return fail("The monthly cap must be more than 0, or the vault refuses every payment.");
-  if (monthlyCap > CAP_MAX) return fail("That monthly cap is too large.");
+  const cap = parseMonthlyCap(form.monthlyCap);
+  if (!cap.ok) return cap;
 
-  return { ok: true, recipient: { name, address, ...(country ? { country } : {}), currency, monthlyCap } };
+  return { ok: true, recipient: { name, address, ...(country ? { country } : {}), currency, monthlyCap: cap.value } };
 }
 
 export type DirectoryEntry = Omit<ListedRecipient, "onChain">;
+
+/** A cap edit can only update an already authorized address. Retrying a confirmed change costs no gas. */
+export async function changeRecipientCap(original: bigint, input: string,
+  read: () => Promise<{ authorization: ListedRecipient["onChain"]; nonce: number }>,
+  confirm: (cap: bigint, nonce: number) => Promise<void>) {
+  const cap = parseMonthlyCap(input);
+  if (!cap.ok) throw new Error(cap.error);
+  const { authorization: current, nonce } = await read();
+  if (!current) throw new Error("Couldn’t read the current monthly cap. Try again.");
+  if (!current.allowed) throw new Error("This recipient is no longer authorized for payments.");
+  if (current.monthlyCap === cap.value) return current;
+  if (current.monthlyCap !== original) throw new Error("The monthly cap changed. Cancel and review the new limit first.");
+  await confirm(cap.value, nonce);
+  return { ...current, monthlyCap: cap.value };
+}
 
 export interface RecipientReview {
   recipient: NewRecipient;
