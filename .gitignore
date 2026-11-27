@@ -32,3 +32,6 @@ __pycache__/
 # web: files Next.js regenerates on every dev/build run
 web/next-env.d.ts
 *.tsbuildinfo
+
+# local track briefs (team prep, not for the repo)
+/LeashPay track brief - *.pdf
