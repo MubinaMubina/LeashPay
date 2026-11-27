@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { HttpRequestError, zeroAddress, type Address } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, type AppDeps } from "../src/app";
+import { selectChatCard } from "../src/chat";
 import { ViemVaultGateway } from "../src/chain/viem-gateway";
 import { ConfigurationError } from "../src/config";
 import { APPROVAL_TTL_MS } from "../src/execution/approval";
@@ -170,6 +171,25 @@ describe("chat", () => {
     expect(planner).not.toHaveBeenCalled();
     expect(gateway.sent).toEqual([]);
     expect((await api.request("/plans/plan-1")).status).toBe(404);
+  });
+
+  it("returns the payment details action for 'send 200 test' when the selector needs a recipient", async () => {
+    const model = "claude-opus-5-5";
+    const client = new Anthropic({ apiKey: "fixture", fetch: async () => Response.json({
+      id: "msg_1", type: "message", role: "assistant", model, stop_reason: "tool_use", stop_sequence: null,
+      usage: { input_tokens: 5, output_tokens: 5 }, content: [
+        { type: "text", text: "Freeform model text before selecting an action." },
+        { type: "tool_use", id: "tool_1", name: "clarify", input: { contextStart: null, candidates: ["Test"] } },
+      ],
+    }) });
+    const api = app({ chat: input => selectChatCard(client, model, input) });
+    const res = await api.request("/chat", json({ owner: OWNER, message: "send 200 test", context: ["Pay Linh"] }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      kind: "clarify", contextStart: null, question: "What is the recipient's full name or wallet address and the amount?",
+    });
+    expect(planner).not.toHaveBeenCalled();
+    expect(gateway.sent).toEqual([]);
   });
 
   it("includes names only from the requesting owner's directory", async () => {

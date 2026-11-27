@@ -1,0 +1,25 @@
+.form { display: grid; min-width: 0; }
+.label {
+  display: grid; gap: 5px; min-width: 0;
+  color: var(--ink-2); font-size: 13px; font-weight: 600;
+}
+.fieldHeader, .actions, .recipientStatus { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.fieldHeader { justify-content: space-between; margin-bottom: 5px; }
+.fieldHeader button, .actions :global(.link), .recipientStatus button { text-decoration: underline; text-underline-offset: 3px; }
+.control {
+  display: block; width: 100%; min-width: 0; min-height: 42px;
+  padding: 8px 10px; border: 1px solid #bfc3b8; border-radius: 8px;
+  background: var(--panel); color: var(--ink); font: inherit; font-size: 15px; font-weight: 400;
+}
+.form textarea { margin-top: 5px; resize: vertical; line-height: 1.45; }
+.control:disabled { color: var(--ink-3); opacity: .75; }
+.row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 10px; margin-top: 14px; }
+.status, .recipientStatus { margin: 6px 0 0; color: var(--ink-3); font-size: 13px; }
+.recipientStatus:empty { display: none; }
+.address { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.actions { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+@media (max-width: 799px) {
+  .control { min-height: 44px; font-size: 16px; }
+  .actions button, .fieldHeader button, .recipientStatus button { min-height: 44px; }
+  .fieldHeader { margin-block: -8px 0; }
+}
