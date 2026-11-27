@@ -2,7 +2,11 @@
 
 **An AI payments agent that moves stablecoins across borders inside a vault whose rules it cannot break.**
 
-Built on BNB Chain for BNB Bangkok on HackQuest.
+Built on BNB Smart Chain testnet for BNB Bangkok. Open the app and choose **Explore workspace** to browse without signing in. Choose **Continue with email** to set up a vault and approve a testnet payout.
+
+[Open LeashPay](https://leash-pay-three.vercel.app/) · [Written demo walkthrough](docs/knowledge/video-script.md) · [Run locally](#run-locally)
+
+**Track evidence** · [BNB Chain transaction receipts](contracts/README.md#three-confirmed-payroll-receipts) · [CoinMarketCap × Atlas one-pager (PDF)](docs/submission/leashpay-coinmarketcap-atlas.pdf) · [Cournot decision log](#cournot-integration) · [Living Brain memory and recall](agent/README.md#memory-living-brain)
 
 ## The problem
 
@@ -19,8 +23,9 @@ LeashPay keeps the money in a smart contract, the **vault**. The AI agent can on
 3. The owner types: *"Pay Linh 300 and Marco 450 on the 1st."* The agent recalls each person's preferences and shows the amounts in Vietnamese dong and Philippine pesos, using CoinMarketCap.
 4. **Depeg guard:** the agent asks Cournot how likely USDC is to depeg and shows the claim, the probability and the sources. Above the owner's threshold, it pays in USDT instead of USDC.
 5. The owner approves the plan with one wallet signature; without it the agent sends nothing. The agent then calls the vault, which checks the allowlist, the caps, the cooldown, the allowed coins and the Atlas on-chain price, and pays or refuses with a clear reason.
-6. Between payouts, idle funds sit in a tokenized T-bill (a mock real-world-asset token whose value grows) and are pulled back before the next payout.
-7. Each recipient opens a phone page showing the payments received and their value in local currency.
+6. Each recipient opens a phone page showing the payments received and their value in local currency.
+
+In a separate testnet demo, the agent deposited 5 mUSDT into a mock tokenized T-bill, redeemed the 5 mUSDT into the vault, then paid Linh that amount. Each step has its own transaction receipt. [T-bill receipts and balances](contracts/README.md#t-bill-deposit-withdrawal-and-payment)
 
 ### Sponsored vaults on BSC testnet
 
@@ -100,11 +105,11 @@ The oracle estimated **1.2%** in both plans. At a 5% limit, all three rows propo
 | Path | What it is |
 |---|---|
 | [`contracts/src/interfaces/`](contracts/src/interfaces/) | The vault's frozen interface: `ILeashVault`, `ILeashVaultFactory`, `IPriceFeed`, `IFaucetToken` |
-| [`contracts/`](contracts/) | Vault, factory, testnet mocks, Atlas relay and 57 Foundry tests. [Setup and limitations](contracts/README.md) |
+| [`contracts/`](contracts/) | Vault, factory, testnet mocks, Atlas relay and Foundry tests. [Setup and limitations](contracts/README.md) |
 | [`contracts/deployments/`](contracts/deployments/) | Chain 97 addresses, Atlas observations and receipts for payments, swaps and the T-bill round trip |
 | [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
 | [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
-| [`agent/`](agent/) | The AI agent server: turns an owner's message into a payment plan with Claude, shows the vault's verdict on each payment, and pays through the vault once the owner signs the plan. 269 tests against a simulated vault, plus a confirmed payment through the deployed vault on BSC testnet. [Setup and API](agent/README.md) |
+| [`agent/`](agent/) | Claude turns the owner's message into a plan. The agent simulates each payment against the vault, shows the result and executes the plan after the owner signs. The test suite exercises this flow against a simulated vault. [Setup and API](agent/README.md) |
 | [`web/`](web/) | The web app: Privy email login, vault setup, the owner's chat with the agent (plan, the vault's verdict on each payment, approve with the wallet, payments landing row by row), adding a recipient (the owner's wallet allows it in the vault, then the agent learns the name), the kill switch, the live attack the vault refuses, and a recipient phone page with each payment's value in local currency. [Setup and design](web/README.md) |
 | [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
 | [Project plan (PDF)](LeashPay%20v2%20%E2%80%94%20Plan%20after%20the%20HackQuest%20rules.pdf), [roadmap (PNG)](LeashPay%20%E2%80%94%2036-hour%20roadmap.png) | The hackathon plan and the build timeline |
@@ -112,23 +117,17 @@ The oracle estimated **1.2%** in both plans. At a 5% limit, all three rows propo
 All eight deployed addresses now have readable source on BscScan Testnet. The demo vault
 and factory have exact matches. [Contract addresses and verification results](contracts/README.md#contract-sources-on-bscscan)
 
-The roadmap still includes the demo video. The team currently prefers Vercel and will confirm the hosting choice at
-deployment, with Cloudflare still an option. For instructions on running the agent, see the
-[agent README](agent/README.md); for the web app, see the [web README](web/README.md).
+## Hosted demo
 
-## Roadmap
-
-| Gate | Time (Bangkok) | What must be true | Status |
-|---|---|---|---|
-| ABI frozen | Wed 25 Nov, 20:30 | Both builders agree on the vault interface | Done: approved and merged on 25 Nov |
-| First testnet payment | Thu 26 Nov, 04:00 | Agent → vault → recipient, one real payment on BSC testnet | Done on 26 Nov at 02:58: Claude planned "Pay Marco 1 USDT", the vault owner signed the plan, and the agent server paid 1 mUSDT through the vault. [Payment on BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc) |
-| Full demo works | Thu 26 Nov, 18:00 | All three demo moments, end to end; feature freeze | Upcoming |
-| Code freeze | Thu 26 Nov, 23:00 | Videos and write-ups recorded | Upcoming |
-| Submitted | Fri 27 Nov, 09:00 | Submitted on HackQuest to all four tracks | Upcoming |
+Vercel hosts the web app and Railway runs the agent. The demo video has been recorded. Judges can also inspect the confirmed payroll transactions for Linh, Marco and Mai without an account. [Agent health](https://leashpay-production.up.railway.app/health) · [Payroll receipts](contracts/README.md#three-confirmed-payroll-receipts)
 
 **Jury demo:** MegaFuel sponsorship ends **Friday 27 November 2026 at 09:00 Bangkok time** (02:00 UTC). Run `make megafuel-status` before presenting. [Extend the demo window or top up testnet gas](docs/megafuel-jury.md).
 
 ## Run locally
+
+Use Node.js 22 or later. Start the agent in one terminal, then the web app in another and open <http://localhost:3000>. The two setup guides cover dependencies, the root `.env` and startup commands. [Agent setup](agent/README.md#run-it) · [Web setup](web/README.md#run-it)
+
+### Reproduce the testnet demo
 
 From the repository root, run `make seed-demo` to prepare the three testnet
 payees for “Pay my 3 freelancers”. The command checks the existing vault and
@@ -146,8 +145,6 @@ terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
 stop it, or use `make stop` from another terminal. Use `make status` to check
 whether it is running and `make logs` to see recent activity. After reboot,
 start it manually for the demo. `make help` lists setup and test commands.
-
-The web app needs the agent running: `npm start` in `agent/`, then `npm run dev` in `web/`, and open http://localhost:3000. See [web/README.md](web/README.md).
 
 ### Live terminal checks
 
@@ -193,8 +190,8 @@ project's prepaid memory balance was insufficient.
 
 ## Team
 
-- **Builder A:** smart contracts (Solidity, Foundry)
-- **Builder B:** AI agent and web app (TypeScript, Next.js)
+- **Builder A** built the smart contracts with Solidity and Foundry. [@moimat2345 on GitHub](https://github.com/moimat2345)
+- **Builder B** built the AI agent and web app with TypeScript and Next.js. [@MubinaMubina on GitHub](https://github.com/MubinaMubina)
 
 ## License
 
