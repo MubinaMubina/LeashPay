@@ -54,6 +54,24 @@ describe("payment draft fields", () => {
     expect(draftFields(["Pay 25", "no"], directory)).toBeNull();
   });
 
+  it.each(["her", "lui", "le deuxième", "the second one", "option 2", "I mean the last one, please", "oui"])
+  ("leaves the recipient unselected for the ambiguous answer %s, even when a contact has that name", answer => {
+    const lookalike = [{ ...lea, name: answer }];
+    expect(draftFields(["Pay 25 USDC", answer], lookalike)).toEqual({ amount: "25", token: "USDC", recipient: "" });
+    expect(initialRecipient(answer, lookalike)).toBe("");
+  });
+
+  it("clears an earlier name on a positional reply, and keeps scheduled dates in the original instructions", () => {
+    expect(draftFields(["Pay Léa 25", "the second one"], directory)).toEqual({ recipient: "", token: "auto", amount: "25" });
+    expect(draftFields(["Pay Léa 25", "on the 2nd of June"], directory)).toBeNull();
+  });
+
+  it("can review an explicit address selection for a contact named Her", () => {
+    const people = [{ ...lea, name: "Her" }];
+    expect(draftFields(["Pay her 25"], people)).toEqual({ recipient: "", token: "auto", amount: "25" });
+    expect(paymentReviewMessage(lea.address, "25", "auto", people)).toBe("Pay 25 to " + lea.address);
+  });
+
   it.each([
     ["Pay Léa 20 and Linh 30"], ["Pay 20 EUR to Léa"], ["send 200 THB"], ["send 200 eth"],
     ["Pay Léa 40 tomorrow"], ["send 200 tomorrow"], ["Pay Léa 20 if she delivers"], ["Don't pay Léa 20"],

@@ -16,6 +16,17 @@ export function canonicalAmount(input: string): string | null {
 
 const nameKey = (value: string) => value.trim().normalize("NFC").toLowerCase();
 
+/** Match whole reference phrases, as the chat router does. A numeral in a date or an amount is not a choice. */
+function ambiguousReference(value: string): boolean {
+  const words = nameKey(value).normalize("NFD").replace(/\p{M}/gu, "").replace(/[^a-z0-9]+/g, " ").trim()
+    .replace(/^(?:i (?:choose|mean|want)|je (?:choisis|veux|prends)) /, "")
+    .replace(/ (?:please|svp|stp|s il (?:vous|te) plait)$/, "");
+  const ordinal = /^(?:(?:the|le|la|l) )?(?:first|second|third|fourth|fifth|last|former|latter|other|premiere?|deuxieme|seconde?|troisieme|quatrieme|cinquieme|derniere?|autre|\d+(?:st|nd|rd|th|er|ere|eme|e))(?: (?:one|option|contact|recipient|personne))?$/;
+  const numbered = /^(?:option|number|numero|choix|n) (?:\d+|one|two|three|un|deux|trois)$/;
+  const relative = /^(?:(?:this|that)(?: one| person| recipient)?|(?:celui|celle)(?: ci| la)?|yes|oui|ok|okay|they|them|she|her|he|him|it|lui|elle|eux|elles)$/;
+  return ordinal.test(words) || numbered.test(words) || relative.test(words);
+}
+
 export function authorizedRecipient(entry: ListedRecipient): boolean {
   return Boolean(entry.name.trim() && entry.onChain?.allowed);
 }
@@ -26,7 +37,7 @@ export function initialRecipient(name: string, directory: ListedRecipient[], can
   if (/^0x[0-9a-f]{40}$/.test(key)) {
     return directory.find(entry => authorizedRecipient(entry) && entry.address.toLowerCase() === key)?.address ?? "";
   }
-  if (!key || candidates.some(candidate => nameKey(candidate) !== key)) return "";
+  if (!key || ambiguousReference(key) || candidates.some(candidate => nameKey(candidate) !== key)) return "";
   const matches = directory.filter(entry => nameKey(entry.name) === key);
   return matches.length === 1 && authorizedRecipient(matches[0]) ? matches[0].address : "";
 }
@@ -55,6 +66,10 @@ export function draftFields(source: string[], directory: ListedRecipient[]): Dra
     if (index && command.test(line)) return null;
     const body = line.replace(command, "").trim();
     if (!body) continue;
+    if (ambiguousReference(body)) {
+      result.recipient = "";
+      continue;
+    }
     // Consume the whole amount and optional token, so "-25", "1,50" and "1e5" never become 25, 50 or 5.
     const money = [...body.matchAll(/(?:^|\s)(?:(\d+(?:\.\d+)?|\.\d+)(?:\s*(USD[TC]?))?|(USD[TC]?)(?:\s+(\d+(?:\.\d+)?|\.\d+))?)(?=$|\s)/giu)];
     if (money.length > 1) return null;
@@ -80,6 +95,10 @@ export function draftFields(source: string[], directory: ListedRecipient[]): Dra
     }
     target = target.replace(/^(?:to|à)\s+/iu, "");
     if (target) {
+      if (ambiguousReference(target)) {
+        result.recipient = "";
+        continue;
+      }
       const known = directory.some(entry => nameKey(entry.name) === nameKey(target));
       if (fiat.has(target.toUpperCase()) || coin.test(target)) return null;
       if (!known && (!/^[\p{L}][\p{L}\p{M}'’-]*$/u.test(target) || /[A-Z]{2}/.test(target))) return null;
