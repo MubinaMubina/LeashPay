@@ -1,6 +1,6 @@
 # Live demo cue card
 
-**B drives the screen. A explains the payment.** Keep two tabs open for the recorded example. [Annotated receipt](02-wallets-and-transactions.md#marcos-receipt-annotated) · [Same payment on BscScan](https://testnet.bscscan.com/tx/0x9842fec16b5c798a4c22cb2411573c1c530bd8c8e0905123ba0ae24cbcd75b3d)
+**B drives the screen. A explains the payment.** To record the 3-minute video instead, follow the [demo video script](video-script.md). Keep two tabs open for the recorded example. [Annotated receipt](02-wallets-and-transactions.md#marcos-receipt-annotated) · [Same payment on BscScan](https://testnet.bscscan.com/tx/0x9842fec16b5c798a4c22cb2411573c1c530bd8c8e0905123ba0ae24cbcd75b3d)
 
 ## Before going on stage
 
