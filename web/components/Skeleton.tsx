@@ -1,5 +1,5 @@
 /** Announce one loading state while keeping decorative bars out of the accessibility tree. */
-export function Skeleton({ label, variant = "lines" }: { label: string; variant?: "lines" | "plan" | "intro" | "receipt" | "recipients" | "history" | "runway" }) {
+export function Skeleton({ label, variant = "lines" }: { label: string; variant?: "lines" | "plan" | "receipt" | "recipients" | "history" | "runway" }) {
   if (variant === "history") return <div role="status">
     <span className="sr-only">{label}</span>
     {[0, 1, 2].map(i => <div key={i} className="payment-row sk-person" aria-hidden="true">
@@ -35,8 +35,10 @@ export function Skeleton({ label, variant = "lines" }: { label: string; variant?
           <i /><i />{variant === "plan" && <i />}
         </div>
       ))}
-      {variant === "plan" && <div aria-hidden="true" className="sk-checks" />}
-      {(variant === "plan" || variant === "intro") && <div aria-hidden="true" className="sk-button" />}
+      {variant === "plan" && <>
+        <div aria-hidden="true" className="sk-checks" />
+        <div aria-hidden="true" className="sk-button" />
+      </>}
     </div>
   );
 }

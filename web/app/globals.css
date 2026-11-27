@@ -78,12 +78,6 @@ code {
 .examples-menu button:hover { background: var(--bg); }
 button, input, select { font-family: inherit; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-.center {
-  display: grid;
-  place-items: center;
-  min-height: calc(100% - var(--header-h));
-  padding: 24px;
-}
 
 .card {
   background: var(--panel);
@@ -91,20 +85,6 @@ button, input, select { font-family: inherit; }
   border-radius: var(--radius);
   padding: 20px 22px;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-}
-
-.intro {
-  max-width: 520px;
-}
-
-.intro h1 {
-  margin: 0 0 8px;
-  font-size: 22px;
-}
-
-.intro p {
-  color: var(--ink-2);
-  margin: 0 0 16px;
 }
 
 .btn {
@@ -317,11 +297,6 @@ summary { cursor: pointer; }
 /* Add recipient: an inline form under the list, in the vault column's width. */
 .not-allowed {
   color: var(--stop) !important;
-}
-.add-link {
-  margin-top: 10px;
-  font-weight: 600;
-  color: var(--ink);
 }
 .added {
   margin-top: 10px;
@@ -889,8 +864,7 @@ summary { cursor: pointer; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .skeleton { display: grid; gap: 12px; padding-block: 14px; }
-.skeleton-plan, .skeleton-intro, .skeleton-receipt { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 20px; }
-.skeleton-intro { width: min(100%, 480px); }
+.skeleton-plan, .skeleton-receipt { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 20px; }
 .sk-title, .sk-row i, .sk-total, .sk-checks, .sk-button { display: block; border-radius: 6px; background: #e5e5e0; animation: breathe 1.4s ease-in-out infinite alternate; }
 .sk-title { width: 36%; height: 18px; }
 .sk-row { display: flex; justify-content: space-between; align-items: center; height: 32px; }

@@ -83,8 +83,6 @@ The second limit came from an outside review. Without it, a hacked agent could s
 
 This works with the Cournot depeg guard. Cournot **predicts** a depeg from prediction markets, and the agent uses that probability to choose the coin. Atlas **observes** the current price, and the vault enforces the floor no matter what the agent decides.
 
-It also protects the project plan. If time runs short, swaps are on the cut list, but the plan says the Atlas integration must never be cut. With the floor in `pay`, Atlas stays in the core payment path either way.
-
 *Trade-off:* with the floor on, a stale relay stops payments. The owner can set `minTokenPrice` to 0 to turn the check off.
 
 ### The depeg threshold stays off-chain
@@ -142,23 +140,8 @@ The vault's address works like a bank account number: any USDT or USDC sent to i
 - **Rolling time windows:** deferred; more storage for an edge case the demo doesn't hit.
 - **OpenZeppelin `Ownable2Step` and `Pausable`:** replaced by a fixed owner and our own pause, for the reasons above.
 
-## How these decisions were reviewed
-
-The interface went through gstack's engineering plan review: architecture, code quality, tests and performance, with every finding recorded and resolved. A second AI model (OpenAI Codex) then reviewed the plan independently. It found five gaps that are fixed above: unbounded swap losses, retries of multi-step plans, ownership transfer breaking vault lookup, an open token list breaking the cap math, and a freeze check too weak to catch type changes. It also argued for delaying the freeze until a full payout worked end to end. We kept the freeze on schedule so both builders could work in parallel, and the first real testnet payment (Thursday 04:00 gate) serves as that end-to-end check.
-
-## If time runs short
-
-The project plan's cut order is: agent memory first, then the real T-bill sweep (keep a mock call), then swaps (pay in one stablecoin). None of these cuts changes the interface:
-
-- A mock T-bill keeps `sweepToTBill` and `redeemFromTBill` working.
-- If swaps are cut, the agent stops calling `swap`; the function stays.
-- Atlas stays in the core path through the price floor in `pay`.
-
-What the plan says never to cut (the vault rules, the agent paying on testnet, the Atlas and CMC calls, the Cournot guard, the attack demo and the kill switch) all sits on `pay`, the owner functions and the views.
-
 ## Related
 
-- [ABI reference](vault-abi.md): every function, event and error
-- [How to check a contract against the frozen ABI](how-to-check-abi.md)
-- [How to change the frozen ABI](how-to-change-abi.md)
+- [Vault ABI reference](vault-abi.md)
+- [Deployed contracts and testnet receipts](../contracts/README.md#contract-sources-on-bscscan)
 - [Project overview](../ReadMe.md)

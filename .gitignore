@@ -31,6 +31,9 @@ contracts/broadcast/
 /LeashPay — 36-hour roadmap.png
 /docs/superpowers/plans/
 /docs/superpowers/specs/
+/docs/knowledge/
+/docs/reviews/
+/docs/megafuel-jury.md
 
 # Python operational scripts
 __pycache__/
@@ -38,4 +41,5 @@ __pycache__/
 
 # web: files Next.js regenerates on every dev/build run
 web/next-env.d.ts
+/web/AGENTS.md
 *.tsbuildinfo

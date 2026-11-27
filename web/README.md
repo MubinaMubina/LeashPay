@@ -14,7 +14,7 @@ Requirements: Node.js 22 or newer, and the agent server running on this machine.
 
 1. In the repository-root `.env` (see `.env.example`), set:
    - `NEXT_PUBLIC_PRIVY_APP_ID` and `PRIVY_APP_SECRET`, from the Privy dashboard. The app needs email login and Ethereum embedded wallets turned on, and `http://localhost:3000` added to its allowed origins.
-   - `NEXT_PUBLIC_FACTORY_ADDRESS` and `FACTORY_ADDRESS` (`0x80b66347374C6df4f157368497201aa63a371f60` on chain 97).
+   - Set `NEXT_PUBLIC_FACTORY_ADDRESS` and `FACTORY_ADDRESS` to the factory for your deployment. For the sponsored testnet demo, use the [factory addresses and hosting settings](../docs/sponsored-vault.md#connect-the-hosted-web-app-and-agent).
    - `NODEREAL_API_KEY`, which serves payment history and public recipient receipts.
    - `AGENT_DEMO_ATTACK=1` for the live attack.
 2. Start the agent: `npm start` in `agent/`.
@@ -84,7 +84,7 @@ Type a request in English or French, or choose an action on the help card. “Ho
 
 Opening an account only looks up the wallet’s existing vault. A new account can open with zero tBNB, zero stablecoins and no recipients. Existing vaults open the payment dashboard at any balance. A failed lookup offers a retry and leaves balances marked unavailable. [Account logic](lib/onboarding.ts)
 
-**Activate vault** is optional. With the published V2 deployment enabled, the owner signs an activation message and the agent pays the network fee. Returning owners with only a V1 vault reopen that vault with its existing balance, recipients and fee-free payment terms. The original V1 deployment uses an owner-paid creation transaction. A newly activated vault starts empty. [Setup and fees](../docs/sponsored-vault.md) · [Demo wallets](../docs/knowledge/demo.md#demo-wallets-on-bsc-testnet)
+**Activate vault** is optional. With the published V2 deployment enabled, the owner signs an activation message and the agent pays the network fee. Returning owners with only a V1 vault reopen that vault with its existing balance, recipients and fee-free payment terms. The original V1 deployment uses an owner-paid creation transaction. A newly activated vault starts empty. [Setup and fees](../docs/sponsored-vault.md) · [Demo wallets](../contracts/deployments/97-demo-recipients.json)
 
 In **Your vault**, **Add money** and **Withdraw** preview a bank transfer in either direction. Enter the USD amount to deposit or receive. The preview applies an illustrative transfer fee of 1% of the entered bank amount, rounded to the nearest cent. A $200 deposit converts $198 after the $2 fee. To receive $200 at the bank, the vault covers $202. The preview divides the vault-side amount by the selected coin’s USD price to estimate the USDT or USDC. CoinMarketCap supplies the rate and quote time. If the rate is unavailable, the preview labels the $1 example explicitly. The amount stays in the browser. Both previews are available before login and after activation. The final buttons are disabled.
 

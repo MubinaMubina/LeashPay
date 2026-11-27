@@ -4,7 +4,7 @@
 
 Built on BNB Smart Chain testnet for BNB Bangkok. Open the app and choose **Explore workspace** to browse without signing in. Choose **Continue with email** to set up a vault and approve a testnet payout.
 
-[Open LeashPay](https://leash-pay-three.vercel.app/) · [Written demo walkthrough](docs/knowledge/video-script.md) · [Run locally](#run-locally)
+[Open LeashPay](https://leash-pay-three.vercel.app/) · [What to try](#the-three-demo-moments) · [Run locally](#run-locally)
 
 **Track evidence** · [BNB Chain transaction receipts](contracts/README.md#three-confirmed-payroll-receipts) · [CoinMarketCap × Atlas one-pager (PDF)](docs/submission/leashpay-coinmarketcap-atlas.pdf) · [Cournot decision log](#cournot-integration) · [Living Brain memory and recall](agent/README.md#memory-living-brain)
 
@@ -83,8 +83,6 @@ The agent's key can never withdraw, change a rule or unpause. The owner can fire
 | **Cournot** | LeashPay uses Cournot’s USDC depeg probability and the owner’s threshold to choose a payout coin before approval. | Two recorded plans show the coin changing from USDC to USDT on the same oracle reading. [Cournot Integration and sanitized log](#cournot-integration) |
 | **ChatAndBuild Living Brain** | The agent's long-term memory: recipients, their preferences, payout history and past attack attempts, recalled before every plan | Built in the agent ([memory](agent/README.md#memory-living-brain)): before each plan it searches Living Brain and gives Claude this owner's notes; it saves each recipient, payout, vault refusal and demo attack. Each plan also connects its payees to memory in code: an earlier attack on an address, or the last payout to that person, appears on the plan card and in the text the owner signs. Live since 27 Nov: `make test-brain` saves a new preference and finds it through search, and a recall for the demo owner connected "you last paid Mateo 200 USDC on 2026-11-26". |
 
-These statuses are updated as each part lands.
-
 ## Cournot Integration
 
 Before presenting an eligible payroll plan for approval, the agent asks Cournot’s Intelligence Oracle **“Will USDC depeg below $0.98 for 24 consecutive hours by December 31, 2026?”** It sends the question to `POST /intelligence/v1/resolve` on `https://interface.cournot.ai`, matches the YES market for that event, then posts the question and market ID to `/intelligence/v1/probability`. [Oracle client](agent/src/depeg/cournot.ts)
@@ -100,27 +98,9 @@ Cournot supplies the probability and supporting sources. LeashPay compares the p
 
 The oracle estimated **1.2%** in both plans. At a 5% limit, all three rows proposed USDC. At a 0% limit, all three proposed USDT. To repeat the live check, run `make test-cournot` from a configured checkout, then `DEPEG_THRESHOLD_PCT=0 make test-cournot` to compare decisions. These checks request a fresh assessment using provider quota. [Setup and oracle behavior](agent/README.md#depeg-guard-cournot)
 
-## What's in the repository today
-
-| Path | What it is |
-|---|---|
-| [`contracts/src/interfaces/`](contracts/src/interfaces/) | The vault's frozen interface: `ILeashVault`, `ILeashVaultFactory`, `IPriceFeed`, `IFaucetToken` |
-| [`contracts/`](contracts/) | Vault, factory, testnet mocks, Atlas relay and Foundry tests. [Setup and limitations](contracts/README.md) |
-| [`contracts/deployments/`](contracts/deployments/) | Chain 97 addresses, Atlas observations and receipts for payments, swaps and the T-bill round trip |
-| [`contracts/abi/frozen-signatures.txt`](contracts/abi/frozen-signatures.txt) | Every frozen function, event and error, generated from the compiled interfaces |
-| [`scripts/abi-signatures.mjs`](scripts/abi-signatures.mjs) | Checks a compiled contract against the frozen list |
-| [`agent/`](agent/) | Claude turns the owner's message into a plan. The agent simulates each payment against the vault, shows the result and executes the plan after the owner signs. The test suite exercises this flow against a simulated vault. [Setup and API](agent/README.md) |
-| [`web/`](web/) | The web app: Privy email login, vault setup, the owner's chat with the agent (plan, the vault's verdict on each payment, approve with the wallet, payments landing row by row), adding a recipient (the owner's wallet allows it in the vault, then the agent learns the name), the kill switch, the live attack the vault refuses, and a recipient phone page with each payment's value in local currency. [Setup and design](web/README.md) |
-| [`docs/`](docs/) | Reference, design rationale and how-to guides (see below) |
-
-All eight deployed addresses now have readable source on BscScan Testnet. The demo vault
-and factory have exact matches. [Contract addresses and verification results](contracts/README.md#contract-sources-on-bscscan)
-
 ## Hosted demo
 
-Vercel hosts the web app and Railway runs the agent. The demo video has been recorded. Judges can also inspect the confirmed payroll transactions for Linh, Marco and Mai without an account. [Agent health](https://leashpay-production.up.railway.app/health) · [Payroll receipts](contracts/README.md#three-confirmed-payroll-receipts)
-
-**Jury demo:** MegaFuel sponsorship ends **Friday 27 November 2026 at 09:00 Bangkok time** (02:00 UTC). Run `make megafuel-status` before presenting. [Extend the demo window or top up testnet gas](docs/megafuel-jury.md).
+Vercel hosts the web app and Railway runs the agent. You can inspect the three confirmed payroll transactions and the source of the deployed contracts without an account. [Agent health](https://leashpay-production.up.railway.app/health) · [Payroll receipts](contracts/README.md#three-confirmed-payroll-receipts) · [Verified contracts](contracts/README.md#contract-sources-on-bscscan)
 
 ## Run locally
 
@@ -128,22 +108,11 @@ Use Node.js 22 or later. Start the agent in one terminal, then the web app in an
 
 ### Reproduce the testnet demo
 
-From the repository root, run `make seed-demo` to prepare the three testnet
-payees for “Pay my 3 freelancers”. The command checks the existing vault and
-simulates a 1 mUSDT payment to each payee. Builder B can use the names,
-addresses and local currencies from the [public demo roster](contracts/deployments/97-demo-recipients.json).
-See [demo setup and retries](contracts/README.md#prepare-the-three-demo-payees).
+The confirmed payments to Linh, Marco and Mai are public. Open a receipt to see the recipient, token and amount. [Three BscScan receipts](contracts/README.md#three-confirmed-payroll-receipts)
 
-Run `make pay-demo` to send the three real testnet payments and see each
-payee's balance increase and BscScan receipt. Run `make verify-demo-payments`
-to check the same batch again in read-only mode.
-[Confirmed payments to Linh, Marco and Mai on BscScan](contracts/README.md#three-confirmed-payroll-receipts)
+On a configured testnet checkout, `make seed-demo` registers any missing demo payees and simulates a payment to each. `make pay-demo` sends 1 mUSDT to each of the three. From the same checkout, `make verify-demo-payments` rereads that batch. [Demo roster](contracts/deployments/97-demo-recipients.json) · [Setup and retries](contracts/README.md#prepare-the-three-demo-payees)
 
-From the repository root, `make start` runs the Atlas relay in the current
-terminal and displays its USDT and USDC checks every minute. Press **Ctrl-C** to
-stop it, or use `make stop` from another terminal. Use `make status` to check
-whether it is running and `make logs` to see recent activity. After reboot,
-start it manually for the demo. `make help` lists setup and test commands.
+`make start` runs the Atlas price relay in the current terminal. Press **Ctrl-C** to stop it. `make help` lists the available checks.
 
 ### Live terminal checks
 
@@ -162,30 +131,18 @@ contacts the service and exits with an error if its evidence is missing.
 | `make test-paiement RUN=jury-1` | One actual sponsored transfer of 1 mUSDT to Marco, his balance before and after, agent gas and a BscScan receipt. |
 | `make test-demo RUN=jury-1` | Claude plans one payment to Marco. The terminal checks the plan, fetches the PHP quote and the Atlas prices, then runs the sponsored transfer. |
 
-The two payment commands share the same run ID. Reusing it on the same Mac
+The two payment commands share the same run ID. Reusing it with the same local journal
 verifies the recorded payment. A new ID sends another 1 mUSDT, subject to the
 vault's caps and cooldown. Without `RUN`, the command resumes an interrupted
 transfer or starts a new one. Keep the local `.setup/` transaction journal.
 The terminal uses the demo signer and MegaFuel. To exercise the UI's owner
 approval, run the payment from the app. [Live terminal payment to Marco](https://testnet.bscscan.com/tx/0x9842fec16b5c798a4c22cb2411573c1c530bd8c8e0905123ba0ae24cbcd75b3d)
 
-During the 26 November rehearsal, Privy issued a signed test session. Living
-Brain accepted reads and refused the new capture with HTTP 402 because the
-project's prepaid memory balance was insufficient.
-
-- [x] **Living Brain credits.** The project was credited on 27 November.
-  `make test-brain` then wrote a new preference and found that same preference
-  through search.
-
 ## Documentation
 
-- [Builder A contract and relay review](docs/reviews/2026-11-25-builder-a.md)
-
-- [Vault ABI reference](docs/vault-abi.md): every function, event and error, with units, roles and the required tests
-- [Why the vault looks the way it does](docs/vault-design.md): the threat model, each design decision and its trade-off
-- [How to check a contract against the frozen ABI](docs/how-to-check-abi.md)
-- [How to change the frozen ABI](docs/how-to-change-abi.md)
-- [Agent server](agent/README.md): how a payment flows, how to run it, the HTTP API and the tests
+- [Smart contracts and testnet evidence](contracts/README.md) · [Deployment records](contracts/deployments/)
+- [Vault design](docs/vault-design.md) · [Vault ABI](docs/vault-abi.md) · [Sponsored payments and fees](docs/sponsored-vault.md)
+- [Agent setup and API](agent/README.md) · [Web app and payment flow](web/README.md)
 
 ## Team
 

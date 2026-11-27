@@ -2,7 +2,9 @@
 
 The agent turns an owner's message, such as *"Pay Linh 300 and Marco 450 on the 1st"*, into a payment plan. It shows the owner what the vault will say about each payment, and once the owner approves the plan with a wallet signature, it pays through the vault with its own key. The agent plans; the vault decides. Its key can only call the vault's agent functions, so even a tricked or hacked agent stays inside the owner's rules.
 
-**Status:** the server, the Claude planner and the on-chain executor are built and tested against a simulated vault and chain (323 tests). On 26 Nov they made the first real payment on BSC testnet: Claude planned "Pay Marco 1 USDT", the vault owner signed the approval text, and the agent paid 1 mUSDT through the demo vault, confirmed as final in block 144847984 ([BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)). The [depeg guard](#depeg-guard-cournot) asks Cournot before each payment plan which stablecoin to pay in, and each payment shows its [local-currency amount](#local-currency-amounts-coinmarketcap) from CoinMarketCap. The agent's [memory](#memory-living-brain) (Living Brain) recalls past payouts, preferences and attack attempts before each plan, connects each payee to what it remembers (an earlier attack, the last payout) and saves every new recipient, payout, refusal and attack. Saving and recall both work live since the project's credits arrived on 27 Nov.
+On 26 November, Claude planned “Pay Marco 1 USDT”, the owner signed, and the agent paid Marco 1 mUSDT through the vault on BSC testnet. The payment was confirmed in block 144847984. [Payment on BscScan](https://testnet.bscscan.com/tx/0xe58a8c675e542437271c962b7f5adf029d7198e01ea541f1876fcec7a8818ddc)
+
+Cournot supplies the stablecoin risk assessment, CoinMarketCap supplies the local-currency quote, and Living Brain recalls the owner's prior payouts and preferences. [Depeg guard](#depeg-guard-cournot) · [Local-currency amounts](#local-currency-amounts-coinmarketcap) · [Memory and recall](#memory-living-brain)
 
 ## How a payment flows
 
@@ -65,11 +67,11 @@ Requirements: Node.js 22 or newer.
    npm run key
    ```
 
-   Then fund that address with test BNB from the BSC testnet faucet, and send the **address** (never the key) to Builder A: it becomes the factory's `defaultAgent`.
+   Fund that wallet with test BNB for network fees. For your own deployment, use its public address as the factory's `defaultAgent`. An existing vault accepts payments from its authorized agent.
 
 3. Fill in the root `.env`:
    - `ANTHROPIC_API_KEY`: your Claude API key. The old name `LLM_API_KEY` is still read.
-   - `FACTORY_ADDRESS`: once Builder A has deployed the contracts.
+   - `FACTORY_ADDRESS` identifies your deployment's vault factory. [BSC testnet deployments](../contracts/README.md#bsc-testnet-deployment)
    - `COURNOT_API_KEY` (optional): Cournot's free quota works without it; once that is used up, the depeg guard needs a credited key.
    - `CMC_API_KEY` (optional): CoinMarketCap Pro key for local-currency amounts. Without it, plans show coin amounts only.
    - `LIVING_BRAIN_API_KEY`, `LIVING_BRAIN_BRAIN_ID`, `LIVING_BRAIN_SUBJECT_ID` (optional, all three): the agent's memory. Without them, plans recall nothing and nothing is saved.
@@ -225,7 +227,7 @@ The agent's long-term memory is ChatAndBuild's Living Brain. It never decides an
 ## Tests
 
 ```bash
-npm test          # 269 tests; no API key, chain or network needed
+npm test          # Local tests with simulated services
 npm run build     # type-check
 npm run abi:check # the generated ABI matches the Solidity interfaces
 npm run check:demo # the two demo messages give the plans the demo needs, 3 runs each against the real Claude (about 6 calls; needs the Claude key)

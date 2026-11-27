@@ -17,9 +17,9 @@ node scripts/abi-signatures.mjs --check contracts/abi/frozen-signatures.txt \
   IFaucetToken=contracts/out/MockToken.sol/MockToken.json
 ```
 
-`LeashVault` implements the [frozen behavior](../docs/vault-abi.md). The factory
-creates one vault per owner and returns the addresses required by Builder B in
-`config()`. It accepts two distinct 18-decimal tokens and a USDT-backed ERC4626.
+`LeashVault` implements the [vault interface](../docs/vault-abi.md). The factory
+creates one vault per owner and exposes its configuration through `config()`.
+It accepts two distinct 18-decimal tokens and a USDT-backed ERC4626.
 The vault owner cannot be changed; the agent cannot withdraw or change rules.
 
 The testnet dependencies deliberately model external systems:
@@ -67,19 +67,16 @@ Setup, swaps, T-bill operations and owner withdrawals carry no payment fee.
 
 ## BSC testnet deployment
 
-The chain 97 deployment is recorded in [deployments/97.json](deployments/97.json).
-Factory: [`0x80b66347374C6df4f157368497201aa63a371f60`](https://testnet.bscscan.com/address/0x80b66347374C6df4f157368497201aa63a371f60).
-Builder B needs only this factory address and the compiled frozen interfaces;
-read token, feed, treasury, DEX and agent addresses from `factory.config()`.
-Both factory variables are populated in the local ignored `.env`.
+The original factory on chain 97 is [`0x80b66347374C6df4f157368497201aa63a371f60`](https://testnet.bscscan.com/address/0x80b66347374C6df4f157368497201aa63a371f60). Its `config()` exposes the tokens, feeds, T-bill, DEX and default agent. [Original deployment](deployments/97.json)
+
+New sponsored vaults use [`0xec8339Aa64277e759475c6777D7832652a390b99`](https://testnet.bscscan.com/address/0xec8339Aa64277e759475c6777D7832652a390b99). The deployment record includes the treasury and the confirmed activation, recipient and payment transactions. [Sponsored deployment](deployments/97-sponsored.json)
 
 The [sponsored payment](https://testnet.bscscan.com/tx/0xc358512d795e0ea18e218f5816ecf2f32b386fff1bd5cde742648c15648a079d)
 transferred 1 mock USDT from the demo vault to a controlled recipient. Its receipt
 has `effectiveGasPrice = 0`, and the agent's BNB balance is unchanged across the
 payment block. Evidence is in [97-smoke.json](deployments/97-smoke.json) and the
 read-only receipt/event/revert checks in [97-checks.json](deployments/97-checks.json).
-This validates the contract and agent signing key; the LLM agent and web UI still
-need integration.
+For payments submitted through the app, see the [web demo](../web/README.md) and the [agent's first signed plan](../agent/README.md).
 
 From the repository root, create an isolated Python environment and install the
 operational dependencies:
@@ -111,7 +108,7 @@ From the repository root, run `make seed-demo`. It uses the existing demo
 vault on BSC testnet (97). The [demo roster](deployments/97-demo-recipients.json)
 contains three fictional profiles for the Bangkok agency. Linh uses the
 controlled address from the original smoke payment. Marco and Mai use separate
-test wallets. Builder B can load the public roster for display and planning.
+test wallets.
 Only each address, its permission and its cap are written to the vault.
 
 | Profile | Country | Display currency | Monthly cap in stablecoin units |
@@ -198,13 +195,9 @@ push feeds advertise a 24-hour heartbeat, so this deployment uses a 25-hour
 mirrored observations are recorded in [97-atlas.json](deployments/97-atlas.json).
 From the repository root, `make start` runs the reporter in your current
 terminal and displays each check. Press Ctrl-C to stop, or use `make stop`
-from another terminal. It checks both feeds every 60 seconds while the Mac is awake and
-online, and writes an update only for a newer valid observation. There is no
-scheduled shutdown. `make status` shows the process state and last completed check.
-`make logs` shows recent activity. `make stop` lets the current operation finish.
-During sleep polling pauses; after wake the process resumes. After a reboot use
-`make start` again. Starting twice keeps a single process. The deployer and agent
-signing keys are not required by the reporter.
+from another terminal. It polls both feeds every 60 seconds and writes an update
+only for a newer valid observation. `make status` shows the last completed check
+and `make logs` shows recent activity. The reporter uses its own signing key.
 
 Use `make test` for local checks and `make verify` to replay the recorded
 payment, swap and T-bill transactions on BSC testnet. For a fresh checkout, run `make setup` and
@@ -215,10 +208,8 @@ If observations expire or fall below the owner's floor, payments fail closed.
 The mock DEX starts with 100,000 units of each faucet token. The demo vault was
 funded with 1,000 mock USDT; its owner, agent and reporter are separate test
 wallets. Mock tokens, simulated T-bill returns and the permissive faucet are for
-the hackathon testnet only. MegaFuel's private policy has its own funding, limits
-and expiration; sponsorship eligibility is checked again before each new send.
-The policy ends on **27 November 2026 at 09:00 Bangkok time**.
-[Check, extend or top up MegaFuel for a jury demo](../docs/megafuel-jury.md).
+the hackathon testnet only. The demo scripts check MegaFuel sponsorship before
+each new sponsored send. Run `make megafuel-status` to see policy credit and expiry.
 
 ## Swap proof
 

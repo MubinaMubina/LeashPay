@@ -1,21 +1,13 @@
 # LeashVault ABI reference
 
-This is the complete reference for the vault interface that sits between LeashPay's smart contracts (Builder A) and its AI agent and web app (Builder B). The agent server and the dashboard call exactly these functions, listen for these events and show these errors. Builder A's `LeashVault` must implement every one of them.
-
-**Status:** frozen. Builder A reviewed and approved v1, and it was merged into `main` on 25 Nov 2026. The interfaces compile; the implementation and local Foundry tests are now present on `a/vault-core`; see `contracts/README.md` for deployment evidence.
-
-- Source: [`contracts/src/interfaces/`](../contracts/src/interfaces/)
-- Frozen signature list: [`contracts/abi/frozen-signatures.txt`](../contracts/abi/frozen-signatures.txt)
-- Why it looks this way: [vault-design.md](vault-design.md)
-- Checking an implementation: [how-to-check-abi.md](how-to-check-abi.md)
-- Changing it after the freeze: [how-to-change-abi.md](how-to-change-abi.md)
+This reference covers the V1 functions, events and errors used by the agent and the dashboard. Sponsored vaults extend these interfaces with signed activation, recipient authorization and payment fees. [Solidity interfaces](../contracts/src/interfaces/) · [Sponsored vaults](../contracts/README.md#sponsored-vaults) · [Vault design](vault-design.md)
 
 ## At a glance
 
 | Interface | File | Functions | Events | Errors | Implemented by |
 |---|---|---|---|---|---|
-| `ILeashVault` | [ILeashVault.sol](../contracts/src/interfaces/ILeashVault.sol) | 24 | 12 | 20 | `LeashVault` (Builder A) |
-| `ILeashVaultFactory` | [ILeashVaultFactory.sol](../contracts/src/interfaces/ILeashVaultFactory.sol) | 3 | 1 | 1 | `LeashVaultFactory` (Builder A) |
+| `ILeashVault` | [ILeashVault.sol](../contracts/src/interfaces/ILeashVault.sol) | 24 | 12 | 20 | `LeashVault` |
+| `ILeashVaultFactory` | [ILeashVaultFactory.sol](../contracts/src/interfaces/ILeashVaultFactory.sol) | 3 | 1 | 1 | `LeashVaultFactory` |
 | `IPriceFeed` | [IPriceFeed.sol](../contracts/src/interfaces/IPriceFeed.sol) | 2 | 0 | 0 | Atlas SingleFeed on mainnet, `AtlasRelayFeed` on testnet |
 | `IFaucetToken` | [IFaucetToken.sol](../contracts/src/interfaces/IFaucetToken.sol) | 1 | 0 | 0 | Mock USDT and USDC (testnet only) |
 
@@ -219,7 +211,7 @@ The compiled vault ABI also includes OpenZeppelin's `ReentrancyGuardReentrantCal
 
 ## Rules, errors and required tests
 
-The interface fixes names and types. This table fixes **behavior**: each rule, the error that proves it, and the Foundry test Builder A writes for it. These tests are implemented in `contracts/test/` and run in CI.
+Each rule below has an expected error and a Foundry test. The tests run in CI. [Contract tests](../contracts/test/)
 
 | Rule | Error | Foundry test |
 |---|---|---|
@@ -242,7 +234,7 @@ The interface fixes names and types. This table fixes **behavior**: each rule, t
 | Owner-only setters | `Unauthorized` | `test_ownerFunctions_rejectOtherCallers` |
 | T-bill round trip grows in value | none | `test_tbill_sweepRedeemRoundTripGrowsValue` |
 | One vault per owner | `VaultAlreadyExists` | `test_factory_secondVaultReverts` |
-| The ABI matches the freeze | signature check | [how-to-check-abi.md](how-to-check-abi.md), run in CI |
+| The ABI matches the frozen signatures | signature check | [ABI verification script](../scripts/abi-signatures.mjs), run in CI |
 
 ## `ILeashVaultFactory`
 
@@ -267,7 +259,7 @@ function latestRoundData() external view
 | Network | Feed | Notes |
 |---|---|---|
 | BSC mainnet | Atlas SingleFeed proxy per pair ([Atlas push-mode docs](https://docs.atlasoracle.io/developers/atlas-oracle/integrate-the-push-mode)) | Atlas can restrict reads to approved contracts. The vault address would need approval. |
-| BSC testnet | `AtlasRelayFeed` (Builder A) | For both stablecoins, the reporter reads the **mainnet** Atlas answer and `updatedAt` and writes them to the relay. |
+| BSC testnet | `AtlasRelayFeed` | For both stablecoins, the reporter reads the **mainnet** Atlas answer and `updatedAt` and writes them to the relay. |
 
 Rules every consumer follows:
 
@@ -286,24 +278,4 @@ Testnet only, on the mock USDT and USDC (standard 18-decimal ERC-20 tokens plus 
 
 ## Freeze and change rule
 
-These are frozen:
-
-- the four files in [`contracts/src/interfaces/`](../contracts/src/interfaces/)
-- [`contracts/abi/frozen-signatures.txt`](../contracts/abi/frozen-signatures.txt), generated from them
-
-After the freeze, a change needs **both builders' agreement first**, then one PR that edits the interface, regenerates `frozen-signatures.txt` and adds a line to the changelog below. The steps are in [how-to-change-abi.md](how-to-change-abi.md). Adding something new is safe for existing callers; renaming or retyping something breaks the other builder's code.
-
-## Notes for implementers (Builder A)
-
-These are not part of the freeze. They are the traps that would make an implementation fail the signature check.
-
-- Declare `contract LeashVault is ILeashVault, ReentrancyGuard` and use `SafeERC20`. Write the owner (`address public immutable owner`), agent and pause logic yourself, reverting with `Unauthorized(msg.sender)` and `VaultPaused()`. Do not inherit OpenZeppelin `Ownable` or `Pausable`: the owner is fixed by design, and their errors would not be in the frozen interface.
-- Write `rules()` and `config()` as explicit functions that return the struct. A `public` struct state variable gets an auto-getter that returns a tuple of fields, which does not match the interface.
-- Declare `tbill` as `address`, not `IERC4626`, for the same reason.
-- In `swap`, approve exactly `amountIn` with `forceApprove`, measure the balance change rather than trusting the DEX's return value, and reset the approval to 0 afterwards.
-- Pack each recipient's spent amount, bucket number and `lastPaidAt` into one storage slot if convenient. Every view is O(1); nothing loops over recipients.
-- The mock T-bill needs USDT to pay out its growth on redeem. Pre-fund it or let it mint.
-
-## Changelog
-
-- **v1** (2026-11-25): first version. Reviewed and approved by Builder A, then frozen by merging into `main`.
+The four V1 interfaces above define the original vault contract. From the repository root, `make test` compiles the contracts and checks the implementations against the frozen signatures. The agent's `npm run abi:check` verifies the TypeScript ABIs used by the server and web app. [Frozen signatures](../contracts/abi/frozen-signatures.txt) · [Contract setup](../contracts/README.md)
