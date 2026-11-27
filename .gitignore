@@ -25,6 +25,13 @@ contracts/broadcast/
 # local credentials setup records (no source files)
 .setup/
 
+# local previews and hackathon planning files
+/previews/
+/LeashPay v2 — Plan after the HackQuest rules.pdf
+/LeashPay — 36-hour roadmap.png
+/docs/superpowers/plans/
+/docs/superpowers/specs/
+
 # Python operational scripts
 __pycache__/
 *.pyc
