@@ -37,6 +37,36 @@ function PayoutTagline() {
   );
 }
 
+const integrations = [
+  "BNB Chain",
+  "CoinMarketCap × Atlas",
+  "Cournot",
+  "ChatAndBuild Living Brain",
+  "NodeReal MegaFuel",
+];
+
+function IntegrationCredits() {
+  const [paused, setPaused] = useState(false);
+  const names = integrations.map(name => <li key={name}>{name}</li>);
+
+  return (
+    <footer className={styles.credits} aria-labelledby="credits-title">
+      <div className={styles.creditsHeading}>
+        <h2 id="credits-title">We built LeashPay with</h2>
+        <button className={styles.motionControl} type="button" aria-controls="integration-names"
+          aria-label={paused ? "Resume scrolling names" : "Pause scrolling names"}
+          onClick={() => setPaused(!paused)}>
+          {paused ? "Resume" : "Pause"}
+        </button>
+      </div>
+      <div id="integration-names" className={styles.creditTrack} data-paused={paused}>
+        <ul role="list">{names}</ul>
+        <ul aria-hidden="true">{names}</ul>
+      </div>
+    </footer>
+  );
+}
+
 export default function Home() {
   const { ready, authenticated, login } = usePrivy();
   if (authenticated) return <Workspace />;
@@ -82,6 +112,7 @@ export default function Home() {
           </div>
         </section>
       </main>
+      <IntegrationCredits />
     </div>
   );
 }

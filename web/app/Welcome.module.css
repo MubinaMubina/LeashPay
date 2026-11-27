@@ -98,6 +98,73 @@
 .total dt { font-weight: 550; }
 .total dd { font-size: 20px; line-height: 1.2; letter-spacing: -.035em; }
 
+.credits { max-width: 1160px; margin: clamp(32px, 3.5vw, 48px) auto 0; }
+.creditsHeading { position: relative; display: flex; align-items: center; gap: 16px; }
+.creditsHeading::before, .creditsHeading::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.creditsHeading h2 { margin: 0; font-size: 13px; font-weight: 550; color: var(--muted); }
+.creditTrack { display: flex; align-items: center; margin-top: 18px; color: var(--green); }
+.creditTrack ul {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: 500 clamp(20px, 1.8vw, 23px)/1.4 var(--serif);
+}
+.creditTrack li { white-space: nowrap; }
+.creditTrack [aria-hidden], .motionControl { display: none; }
+
+@keyframes scrollCredits {
+  to { transform: translateX(-100%); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .creditTrack {
+    overflow: hidden;
+    mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+  }
+  .creditTrack ul {
+    flex: none;
+    min-width: 100%;
+    flex-wrap: nowrap;
+    gap: 0;
+    animation: scrollCredits 48s linear infinite;
+  }
+  .creditTrack [aria-hidden] { display: flex; }
+  .creditTrack li { position: relative; flex: 1 0 auto; padding-inline: clamp(18px, 1.65vw, 24px); text-align: center; }
+  .creditTrack li::after {
+    content: "";
+    position: absolute;
+    inset: 50% 0 auto auto;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #bb8b20;
+    transform: translate(50%, -50%);
+  }
+  .creditTrack[data-paused="true"] ul { animation-play-state: paused; }
+  .motionControl {
+    display: block;
+    position: absolute;
+    right: 0;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 4px;
+    color: var(--muted);
+    background: var(--paper);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+}
+@media (hover: hover) {
+  .motionControl { opacity: 0; }
+  .credits:hover .motionControl, .motionControl:focus-visible { opacity: 1; }
+}
+
 @media (max-width: 700px) {
   .page { padding: 0 max(20px, env(safe-area-inset-right)) 28px max(20px, env(safe-area-inset-left)); }
   .header { min-height: 60px; }
