@@ -95,7 +95,7 @@ export function BalanceCard() {
   );
 }
 
-export function RecipientPreviewCard({ book, onViewAll }: { book: RecipientBook; onViewAll: () => void }) {
+export function RecipientPreviewCard({ book, onViewAll, onAdd }: { book: RecipientBook; onViewAll: () => void; onAdd: () => void }) {
   const { list, error, refresh } = book;
   const [page, setPage] = useState(0);
   const [attempt, setAttempt] = useState(0);
@@ -144,7 +144,8 @@ export function RecipientPreviewCard({ book, onViewAll }: { book: RecipientBook;
         </>
       )}
       <footer className={styles.footer}>
-        <button className="btn" type="button" onClick={onViewAll}>View all recipients</button>
+        {preview?.total === 0 && !preview.unverified && <button className="btn" type="button" onClick={onAdd}>Add a recipient</button>}
+        <button className={preview?.total === 0 && !preview.unverified ? "chip" : "btn"} type="button" onClick={onViewAll}>View all recipients</button>
         {preview && hasPages && (
           <div className={styles.pager} role="group" aria-label="Recipient pages">
             <button className="chip" type="button" disabled={preview.page === 0} onClick={() => setPage(preview.page - 1)}>Previous</button>

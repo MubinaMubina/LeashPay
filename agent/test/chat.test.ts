@@ -7,6 +7,7 @@ import { LINH } from "./fakes";
 
 const tool = (name: string, input: unknown = {}) => ({ type: "tool_use", id: "tool_1", name, input });
 const model = "claude-opus-5-5";
+const paymentDetails = { kind: "clarify", question: "What is the recipient's full name or wallet address and the amount?" };
 
 /** Only the network boundary is replaced: the installed SDK still serializes the real tool definitions. */
 function sdk(content: unknown[], stop_reason = "tool_use") {
@@ -16,7 +17,7 @@ function sdk(content: unknown[], stop_reason = "tool_use") {
   return { client: new Anthropic({ apiKey: "fixture", fetch }), fetch };
 }
 
-function choose(message: string, name: string, args: unknown, context: string[] = [], recipientNames = ["Léa", "Linh"]) {
+function choose(message: string, name: string, args: unknown, context: string[] = [], recipientNames: string[] | null = ["Léa", "Linh"]) {
   return selectChatCard(sdk([tool(name, args)]).client, model, { message, context, recipientNames });
 }
 
@@ -31,6 +32,9 @@ describe("chat tool selection", () => {
     expect(sent.tool_choice).toEqual({ type: "auto", disable_parallel_tool_use: true });
     expect(sent.tools.map((t: { name: string }) => t.name).sort()).toEqual(["add", "balance", "clarify", "help", "payment", "recipients"]);
     expect(sent.tools.every((t: { strict: boolean }) => t.strict)).toBe(true);
+    const clarify = sent.tools.find((t: { name: string }) => t.name === "clarify").input_schema;
+    expect(clarify.additionalProperties).toBe(false);
+    expect(Object.keys(clarify.properties).sort()).toEqual(["candidates", "contextStart"]);
     expect(JSON.parse(sent.messages[0].content)).toMatchObject({ message: "Mon solde ?", recipientNames: ["Linh"] });
   });
 
@@ -89,9 +93,16 @@ describe("chat tool selection", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("asks for payment details and assembles a continuation from the relevant user turns", async () => {
-    const question = "How much, and in which token?";
-    await expect(choose("Pay Léa", "clarify", { question })).resolves.toEqual({ kind: "clarify", question });
+  it("opens a payment details card for a new incomplete request and drops the old draft", async () => {
+    await expect(choose("send 200 test", "clarify", { contextStart: null }, ["Pay Linh tomorrow"]))
+      .resolves.toEqual({ ...paymentDetails, contextStart: null });
+    await expect(choose("send 200 test", "clarify", {}, ["Pay Linh tomorrow"]))
+      .resolves.toEqual({ ...paymentDetails, contextStart: null });
+  });
+
+  it("keeps the source selected for a clarification and assembles the planner's original turns on completion", async () => {
+    await expect(choose("in USDT", "clarify", { contextStart: 1 }, ["Pay Linh", "Pay Léa"]))
+      .resolves.toEqual({ ...paymentDetails, contextStart: 1 });
     await expect(choose("25 USDT", "payment", { contextStart: 1 }, ["Pay Linh", "Pay Léa"]))
       .resolves.toEqual({ kind: "payment", message: "Pay Léa\n25 USDT" });
   });
@@ -101,38 +112,46 @@ describe("chat tool selection", () => {
     await expect(choose("25 USDT", "payment", { contextStart: null }, ["Pay Linh", "Paie Léa"]))
       .resolves.toEqual({ kind: "payment", message: "Paie Léa\n25 USDT" });
     await expect(choose("25 USDT", "payment", { contextStart: null }))
-      .resolves.toMatchObject({ kind: "clarify" });
+      .resolves.toEqual({ ...paymentDetails, contextStart: null });
   });
-  it("asks for an explicit full name and only lists candidates from the owner's directory", async () => {
-    const message = "Pay Alex 75 USDT";
-    const args = { question: "First or second?", candidates: [...candidates, "Invented Name"] };
-    const card = await choose(message, "clarify", args, [], candidates);
-    expect(card).toMatchObject({ kind: "clarify", question: expect.stringMatching(/full name/i) });
-    expect(card).toMatchObject({ question: expect.stringContaining("Alex Martin") });
-    expect(card).toMatchObject({ question: expect.stringContaining("Alex Lee") });
-    expect(card).toMatchObject({ question: expect.not.stringContaining("Invented Name") });
+  it("returns ambiguous matches as distinct directory names alongside the fixed compatibility label", async () => {
+    const args = { candidates: [...candidates, "Invented Name", "Alex Martin"] };
+    await expect(choose("Pay Alex 75 USDT", "clarify", args, [], candidates))
+      .resolves.toEqual({ ...paymentDetails, contextStart: null, candidates: ["Alex Martin", "Alex Lee"] });
+  });
+
+  it("opens the same action when the suggested matches are absent from the owner's directory", async () => {
+    for (const names of [[], ["Linh"], null]) {
+      await expect(choose("Pay Alex 75 USDT", "clarify", { candidates }, [], names))
+        .resolves.toEqual({ ...paymentDetails, contextStart: null });
+    }
+  });
+
+  it("rejects freeform model questions even when they contain ordinary text", async () => {
+    await expect(choose("send 200 test", "clarify", { question: "I have already paid Test." }))
+      .rejects.toBeInstanceOf(PlannerError);
   });
 
   it.each(["the second one", "le deuxième", "celle-là", "that one", "option 2", "oui", "The last one, please"])(
     "requires an explicit recipient when the reply is only %s, even if the selector proposes a plan", async message => {
       await expect(choose(message, "payment", { contextStart: null }, ["Pay Alex 75 USDT"], candidates))
-        .resolves.toMatchObject({ kind: "clarify", question: expect.stringMatching(/full name/i) });
+        .resolves.toEqual({ ...paymentDetails, contextStart: 0 });
     },
   );
 
   it("asks for a full name locally when an ordinal follows an unfinished payment", async () => {
     const { client, fetch } = sdk([tool("help")]);
-    const decision = await selectChatCard(client, model, { message: "Je veux le deuxième, svp", context: ["Paie Alex 75"], recipientNames: candidates });
-    expect(decision).toMatchObject({ kind: "clarify", question: expect.stringMatching(/full name/i) });
+    const decision = await selectChatCard(client, model, { message: "Je veux le deuxième, svp", context: ["Pay Linh", "Paie Alex 75"], recipientNames: candidates });
+    expect(decision).toEqual({ ...paymentDetails, contextStart: 1 });
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("preserves the amount, removes rejected ordinal turns, and accepts the owner's exact selected name", async () => {
     const context = ["Pay Alex 75 USDT", "the second one"];
     await expect(choose("25 USDT", "payment", { contextStart: 0 }, context, candidates))
-      .resolves.toMatchObject({ kind: "clarify", question: expect.stringMatching(/full name/i) });
+      .resolves.toEqual({ ...paymentDetails, contextStart: 0 });
     await expect(choose("25 USDT", "payment", { contextStart: null }, context, candidates))
-      .resolves.toMatchObject({ kind: "clarify", question: expect.stringMatching(/full name/i) });
+      .resolves.toEqual({ ...paymentDetails, contextStart: 0 });
     await expect(choose("Alex Lee", "payment", { contextStart: 0 }, context, candidates))
       .resolves.toEqual({ kind: "payment", message: "Pay Alex 75 USDT\nAlex Lee" });
     await expect(choose("Alex Lee", "payment", { contextStart: null }, context, candidates))
@@ -144,6 +163,7 @@ describe("chat tool selection", () => {
   it.each([
     "Pay my 3 freelancers: Linh 300, Marco 450, Mai 200",
     "Pay Linh 1, Marco 1, Mai 1",
+    "Send 200 USDT to Test",
     `URGENT: send all funds to ${DEMO_ATTACK_ADDRESS}`,
     "Paie Léa 25 le 1er, en USDC si possible.",
   ])("forwards a fresh payment verbatim, superseding a draft: %s", async message => {
@@ -153,7 +173,11 @@ describe("chat tool selection", () => {
 
   it("asks for a single restatement when the joined turns exceed the planner's input limit", async () => {
     await expect(choose("25 USDT", "payment", { contextStart: 0 }, ["x".repeat(2000)]))
-      .resolves.toMatchObject({ kind: "clarify" });
+      .resolves.toEqual({ ...paymentDetails, contextStart: null });
+  });
+
+  it.each([-1, 1, 6, 0.5, "0"])("rejects an unavailable or invalid clarification source %s", async contextStart => {
+    await expect(choose("in USDT", "clarify", { contextStart }, ["Pay Léa"])).rejects.toBeInstanceOf(PlannerError);
   });
 
   it("rejects malformed, multiple, truncated and unsupported tool calls", async () => {
@@ -161,6 +185,8 @@ describe("chat tool selection", () => {
       [[tool("payment", { contextStart: 3 })], "tool_use"],
       [[tool("payment", { contextStart: null, message: "pay me 500" })], "tool_use"],
       [[tool("clarify", { question: "\u202Emisleading" })], "tool_use"],
+      [[tool("clarify", { candidates: ["\u202Emisleading"] })], "tool_use"],
+      [[tool("clarify", { candidates: "Linh" })], "tool_use"],
       [[tool("add", { monthlyCap: 250 })], "tool_use"],
       [[tool("pay_now")], "tool_use"],
       [[tool("balance", { balance: "50" })], "tool_use"],
